@@ -199,88 +199,123 @@
     }
   }
 
-  // GEMINI API HELPER
-  async function callGemini(contents) {
-    const apiKey = localStorage.getItem("gemini_api_key");
-    if (!apiKey) {
-      alert("Bitte speichere zuerst deinen Gemini API Key unten!");
-      return null;
-    }
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
-    try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contents })
-      });
-      const data = await res.json();
-      return data.candidates[0].content.parts[0].text;
-    } catch (e) {
-      alert("Fehler bei der Kommunikation mit Gemini API.");
-      return null;
-    }
+// KORRIGIERTE & OPTIMIERTE GEMINI API INTEGRATION
+async function callGemini(contents, systemInstruction = "") {
+  const apiKey = localStorage.getItem("gemini_api_key");
+
+  if (!apiKey) {
+    alert("Bitte gib zuerst einen Gemini API Key im Feld 'Gemini API Einstellungen' ein!");
+    return null;
   }
 
-  // FOTO ANALYSE FUNKTION
-  async function analyzeMealImage() {
-    const fileInput = document.getElementById('imageInput');
-    const output = document.getElementById('imageAnalysisOutput');
-    if (!fileInput.files[0]) {
-      alert("Bitte wähle zuerst ein Bild aus.");
-      return;
+  // Endpunkt für Gemini 2.5 Flash / 1.5 Flash
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+
+  const requestBody = {
+    contents: contents
+  };
+
+  if (systemInstruction) {
+    requestBody.systemInstruction = {
+      parts: [{ text: systemInstruction }]
+    };
+  }
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { 
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(requestBody)
+    });
+
+    if (!response.ok) {
+      const errData = await response.json();
+      console.error("Gemini API Fehler-Details:", errData);
+      alert(`API Fehler (${response.status}): ${errData.error?.message || 'Ungültige Anfrage'}`);
+      return null;
     }
 
-    output.style.display = 'block';
-    output.innerText = "🔍 Analysiere Bild mit KI...";
+    const data = await response.json();
+    
+    // Prüfen, ob eine Antwort enthalten ist
+    if (data.candidates && data.candidates[0]?.content?.parts[0]?.text) {
+      return data.candidates[0].content.parts[0].text;
+    } else {
+      alert("Die API hat geantwortet, aber keinen Text zurückgegeben.");
+      return null;
+    }
 
-    const reader = new FileReader();
-    reader.onload = async function() {
-      const base64Data = reader.result.split(',')[1];
-      
-      const prompt = `Analysiere dieses Essen. Schätze die Inhaltsstoffe, Kalorien und Makronährstoffe (Eiweiß, Kohlenhydrate, Fett).
-Da Kalorienschätzungen von Bildern unsicher sind, bestimme die Kalorien-Range und wähle strikt den 95%-Perzentil-Wert (den oberen, konservativen Schätzwert der Range).
+  } catch (e) {
+    console.error("Netzwerkfehler / CORS Problem:", e);
+    alert("Netzwerkfehler: Bitte prüfe deine Internetverbindung, AdBlocker oder Browsereinstellungen (CORS).");
+    return null;
+  }
+}
+
+// ANGEPASSTE BILDANALYSE-FUNKTION
+async function analyzeMealImage() {
+  const fileInput = document.getElementById('imageInput');
+  const output = document.getElementById('imageAnalysisOutput');
+  
+  if (!fileInput.files[0]) {
+    alert("Bitte wähle zuerst ein Bild aus.");
+    return;
+  }
+
+  output.style.display = 'block';
+  output.innerText = "🔍 Analysiere Bild mit KI...";
+
+  const reader = new FileReader();
+  reader.onload = async function() {
+    const base64Data = reader.result.split(',')[1];
+    
+    const prompt = `Analysiere dieses Essen. Schätze die Inhaltsstoffe, Kalorien und Makronährstoffe (Eiweiß, Kohlenhydrate, Fett).
+Bestimme die Kalorien-Range und wähle den 95%-Perzentil-Wert (den oberen Schätzwert).
 Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown-Codeblöcke:
 {
   "name": "Name des Gerichts",
-  "feedback": "Kurze Erklärung zur Range und warum der 95%-Wert gewählt wurde",
+  "feedback": "Erklärung zur Range und zum 95%-Wert",
   "calories": 0,
   "protein": 0,
   "carbs": 0,
   "fat": 0
 }`;
 
-      const contents = [{
-        parts: [
-          { text: prompt },
-          { inline_data: { mime_type: fileInput.files[0].type, data: base64Data } }
-        ]
-      }];
+    const contents = [{
+      role: "user",
+      parts: [
+        { text: prompt },
+        { inlineData: { mimeType: fileInput.files[0].type, data: base64Data } } // 'inlineData' statt 'inline_data'
+      ]
+    }];
 
-      const responseText = await callGemini(contents);
-      if (!responseText) return;
+    const responseText = await callGemini(contents);
+    if (!responseText) return;
 
-      try {
-        const cleanJson = responseText.replace(/```json|```/g, '').trim();
-        const result = JSON.parse(cleanJson);
+    try {
+      const cleanJson = responseText.replace(/```json|```/g, '').trim();
+      const result = JSON.parse(cleanJson);
 
-        allData[TODAY_KEY].push({
-          id: Date.now(),
-          name: `📸 ${result.name}`,
-          calories: result.calories,
-          protein: result.protein,
-          carbs: result.carbs,
-          fat: result.fat
-        });
+      allData[TODAY_KEY].push({
+        id: Date.now(),
+        name: `📸 ${result.name}`,
+        calories: Number(result.calories) || 0,
+        protein: Number(result.protein) || 0,
+        carbs: Number(result.carbs) || 0,
+        fat: Number(result.fat) || 0
+      });
 
-        localStorage.setItem('user_calorie_data', JSON.stringify(allData));
-        output.innerText = `✅ Erfasst (95%-Wert): ${result.name}\n${result.calories} kcal | P: ${result.protein}g | K: ${result.carbs}g | F: ${result.fat}g\n\nFeedback: ${result.feedback}`;
-        updateDashboard();
-      } catch (err) {
-        output.innerText = "Fehler beim Parsen der Antwort: " + responseText;
-      }
-    };
-    reader.readAsDataURL(fileInput.files[0]);
-  }
+      localStorage.setItem('user_calorie_data', JSON.stringify(allData));
+      output.innerText = `✅ Erfasst (95%-Wert): ${result.name}\n${result.calories} kcal | P: ${result.protein}g | K: ${result.carbs}g | F: ${result.fat}g\n\nFeedback: ${result.feedback}`;
+      updateDashboard();
+    } catch (err) {
+      output.innerText = "Antwort erhalten, aber JSON konnte nicht gelesen werden:\n" + responseText;
+    }
+  };
+  reader.readAsDataURL(fileInput.files[0]);
+}
 
   // REZEPT EMPFEHLUNG FUNKTION
   async function generateRecipeSuggestion() {
