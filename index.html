@@ -199,7 +199,7 @@
     }
   }
 
-// KORRIGIERTE & OPTIMIERTE GEMINI API INTEGRATION
+// KORRIGIERTE GEMINI API INTEGRATION (MIT GÜLTIGEM MODELL)
 async function callGemini(contents, systemInstruction = "") {
   const apiKey = localStorage.getItem("gemini_api_key");
 
@@ -208,8 +208,8 @@ async function callGemini(contents, systemInstruction = "") {
     return null;
   }
 
-  // Endpunkt für Gemini 2.5 Flash / 1.5 Flash
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+  // Modellname korrigiert auf das aktuelle Stable-Modell gemini-1.5-flash
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
   const requestBody = {
     contents: contents
@@ -239,7 +239,6 @@ async function callGemini(contents, systemInstruction = "") {
 
     const data = await response.json();
     
-    // Prüfen, ob eine Antwort enthalten ist
     if (data.candidates && data.candidates[0]?.content?.parts[0]?.text) {
       return data.candidates[0].content.parts[0].text;
     } else {
@@ -248,8 +247,8 @@ async function callGemini(contents, systemInstruction = "") {
     }
 
   } catch (e) {
-    console.error("Netzwerkfehler / CORS Problem:", e);
-    alert("Netzwerkfehler: Bitte prüfe deine Internetverbindung, AdBlocker oder Browsereinstellungen (CORS).");
+    console.error("Netzwerkfehler:", e);
+    alert("Netzwerkfehler: Bitte prüfe deine Internetverbindung oder AdBlocker.");
     return null;
   }
 }
