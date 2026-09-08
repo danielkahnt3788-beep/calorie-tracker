@@ -38,6 +38,18 @@
     .carbs { color: var(--accent-carbs); }
     .fat { color: var(--accent-fat); }
 
+    <!-- Gemini API Schlüssel Einstellungen -->
+<div class="card">
+  <div class="dashboard-title">Gemini KI Einstellungen</div>
+  <div class="search-box">
+    <input type="password" id="apiKeyInput" placeholder="Gemini API Key hier einfügen...">
+    <button onclick="saveApiKey()">Speichern</button>
+  </div>
+  <small id="apiStatus" style="color: var(--text-muted); display: block; margin-top: 6px;">
+    Schlüssel wird nur lokal in deinem Browser gespeichert.
+  </small>
+</div>
+    
     /* Search Input */
     .search-box { display: flex; gap: 8px; position: relative; }
     input[type="text"], input[type="number"] { width: 100%; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 0.95rem; outline: none; }
