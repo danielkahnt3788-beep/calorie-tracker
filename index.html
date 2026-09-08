@@ -199,7 +199,7 @@
     }
   }
 
-// GEMINI API INTEGRATION (AKTUALISIERT AUF GEMINI 3.5 FLASH)
+// GEMINI API INTEGRATION ÜBER DIE INTERACTIONS API
 async function callGemini(contents, systemInstruction = "") {
   const apiKey = localStorage.getItem("gemini_api_key");
 
@@ -208,16 +208,44 @@ async function callGemini(contents, systemInstruction = "") {
     return null;
   }
 
-  // Modellpfad auf das aktuelle Standardmodell gemini-3.5-flash umgestellt
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`;
+  // Die Interactions API nutzt den v1alpha Endpunkt
+  const url = `https://generativelanguage.googleapis.com/v1alpha/interactions?key=${apiKey}`;
+
+  // Formatting der Inhalte für das Interactions-Protokoll
+  const formattedInputs = contents.map(item => {
+    if (typeof item === 'string') {
+      return { role: "user", content: [{ text: item }] };
+    }
+    
+    // Falls bereits strukturierte Parts (Text + Bild) übergeben werden
+    if (item.parts) {
+      const parts = item.parts.map(p => {
+        if (p.text) return { text: p.text };
+        if (p.inlineData || p.inline_data) {
+          const imgData = p.inlineData || p.inline_data;
+          return {
+            inline_data: {
+              mime_type: imgData.mimeType || imgData.mime_type,
+              data: imgData.data
+            }
+          };
+        }
+        return p;
+      });
+      return { role: item.role || "user", content: parts };
+    }
+
+    return item;
+  });
 
   const requestBody = {
-    contents: contents
+    model: "models/gemini-3.6-flash",
+    input: formattedInputs
   };
 
   if (systemInstruction) {
-    requestBody.systemInstruction = {
-      parts: [{ text: systemInstruction }]
+    requestBody.system_instruction = {
+      content: [{ text: systemInstruction }]
     };
   }
 
@@ -232,19 +260,36 @@ async function callGemini(contents, systemInstruction = "") {
 
     if (!response.ok) {
       const errData = await response.json();
-      console.error("Gemini API Fehler-Details:", errData);
+      console.error("Interactions API Fehler-Details:", errData);
       alert(`API Fehler (${response.status}): ${errData.error?.message || 'Ungültige Anfrage'}`);
       return null;
     }
 
     const data = await response.json();
     
+    // Extraktion der Antwort aus dem Interactions-Response-Format
+    if (data.output) {
+      // Wenn der Output ein Array von Content-Blocks ist
+      if (Array.isArray(data.output)) {
+        const textContent = data.output
+          .flatMap(o => o.content || [])
+          .filter(c => c.text)
+          .map(c => c.text)
+          .join("\n");
+        if (textContent) return textContent;
+      }
+      
+      // Falls der Output direkt im Text-Feld liegt
+      if (typeof data.output === 'string') return data.output;
+    }
+
+    // Fallback-Prüfung für alternative Response-Strukturen
     if (data.candidates && data.candidates[0]?.content?.parts[0]?.text) {
       return data.candidates[0].content.parts[0].text;
-    } else {
-      alert("Die API hat geantwortet, aber keinen Text zurückgegeben.");
-      return null;
     }
+
+    alert("Die API hat geantwortet, aber es konnte kein Text gelesen werden.");
+    return null;
 
   } catch (e) {
     console.error("Netzwerkfehler:", e);
@@ -252,7 +297,7 @@ async function callGemini(contents, systemInstruction = "") {
     return null;
   }
 }
-
+  
 // ANGEPASSTE BILDANALYSE-FUNKTION
 async function analyzeMealImage() {
   const fileInput = document.getElementById('imageInput');
