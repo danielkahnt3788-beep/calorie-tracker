@@ -209,7 +209,7 @@ async function callGemini(contents, systemInstruction = "") {
   }
 
   // Die Interactions API nutzt den v1alpha Endpunkt
-  const url = `https://generativelanguage.googleapis.com/v1alpha/interactions?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1/interactions?key=${apiKey}`;
 
   // Formatting der Inhalte für das Interactions-Protokoll
   const formattedInputs = contents.map(item => {
