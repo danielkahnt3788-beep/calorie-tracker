@@ -3,13 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Calorie Tracker & Food DB</title>
+  <title>Calorie Tracker & AI Assistant</title>
   <style>
     :root {
       --bg-color: #f4f6f8;
       --card-bg: #ffffff;
       --primary: #2563eb;
       --primary-hover: #1d4ed8;
+      --accent-ai: #7c3aed;
       --text-main: #1f2937;
       --text-muted: #6b7280;
       --border-color: #e5e7eb;
@@ -18,17 +19,22 @@
       --accent-fat: #10b981;
     }
 
-    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     body { background-color: var(--bg-color); color: var(--text-main); padding: 16px; display: flex; justify-content: center; }
     .container { width: 100%; max-width: 480px; display: flex; flex-direction: column; gap: 16px; }
 
-    header { text-align: center; margin-bottom: 8px; }
-    header h1 { font-size: 1.5rem; font-weight: 700; color: var(--text-main); }
+    /* Navigation Tabs */
+    .nav-tabs { display: flex; background: var(--card-bg); border-radius: 12px; padding: 4px; border: 1px solid var(--border-color); }
+    .tab-btn { flex: 1; padding: 10px; border: none; background: transparent; font-weight: 600; color: var(--text-muted); cursor: pointer; border-radius: 8px; transition: all 0.2s; }
+    .tab-btn.active { background: var(--primary); color: white; }
+
+    .page { display: none; flex-direction: column; gap: 16px; }
+    .page.active { display: flex; }
 
     .card { background: var(--card-bg); padding: 16px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05); }
+    .title { font-weight: 600; margin-bottom: 12px; font-size: 1.1rem; }
 
     /* Dashboard */
-    .dashboard-title { font-weight: 600; margin-bottom: 12px; font-size: 1.1rem; }
     .progress-bar-bg { background: #e5e7eb; height: 12px; border-radius: 6px; overflow: hidden; margin-bottom: 12px; }
     .progress-bar-fill { background: var(--primary); height: 100%; width: 0%; transition: width 0.3s ease; }
     .macros-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center; font-size: 0.85rem; }
@@ -38,96 +44,264 @@
     .carbs { color: var(--accent-carbs); }
     .fat { color: var(--accent-fat); }
 
-    <!-- Gemini API Schlüssel Einstellungen -->
-<div class="card">
-  <div class="dashboard-title">Gemini KI Einstellungen</div>
-  <div class="search-box">
-    <input type="password" id="apiKeyInput" placeholder="Gemini API Key hier einfügen...">
-    <button onclick="saveApiKey()">Speichern</button>
-  </div>
-  <small id="apiStatus" style="color: var(--text-muted); display: block; margin-top: 6px;">
-    Schlüssel wird nur lokal in deinem Browser gespeichert.
-  </small>
-</div>
-    
-    /* Search Input */
-    .search-box { display: flex; gap: 8px; position: relative; }
-    input[type="text"], input[type="number"] { width: 100%; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 0.95rem; outline: none; }
-    input:focus { border-color: var(--primary); }
-    button { background: var(--primary); color: white; border: none; padding: 10px 16px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
-    button:hover { background: var(--primary-hover); }
+    /* Wochenübersicht */
+    .week-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; text-align: center; margin-top: 8px; }
+    .day-col { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 0.75rem; }
+    .day-bar-bg { background: #e5e7eb; width: 100%; height: 60px; border-radius: 6px; display: flex; align-items: flex-end; overflow: hidden; }
+    .day-bar-fill { background: var(--primary); width: 100%; height: 0%; transition: height 0.3s; }
+    .day-col.active-day .day-label { font-weight: bold; color: var(--primary); }
 
-    /* Search Results */
+    /* Buttons & Inputs */
+    .search-box { display: flex; gap: 8px; }
+    input[type="text"], input[type="password"], input[type="file"] { width: 100%; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 8px; outline: none; }
+    button { background: var(--primary); color: white; border: none; padding: 10px 16px; border-radius: 8px; font-weight: 600; cursor: pointer; }
+    .ai-btn { background: var(--accent-ai); width: 100%; margin-top: 8px; }
+    .ai-btn:hover { background: #6d28d9; }
+
     .results-list { margin-top: 8px; max-height: 200px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 8px; display: none; }
-    .result-item { padding: 10px; border-bottom: 1px solid var(--border-color); cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
-    .result-item:last-child { border-bottom: none; }
-    .result-item:hover { background: #f3f4f6; }
-    .result-info { font-size: 0.85rem; color: var(--text-muted); }
+    .result-item { padding: 10px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
 
-    /* Meal List */
+    /* Meal Items & Feedback */
     .meal-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border-color); }
-    .meal-item:last-child { border-bottom: none; }
-    .delete-btn { background: transparent; color: #ef4444; padding: 4px 8px; font-size: 0.8rem; }
+    .delete-btn { background: transparent; color: #ef4444; padding: 4px; font-size: 0.8rem; }
+    .ai-feedback { margin-top: 10px; padding: 10px; background: #f3e8ff; border-radius: 8px; font-size: 0.9rem; color: #4c1d95; white-space: pre-line; }
   </style>
 </head>
 <body>
 
 <div class="container">
-  <header>
-    <h1>Calorie Tracker</h1>
-  </header>
+  <!-- Navigation Tabs -->
+  <div class="nav-tabs">
+    <button class="tab-btn active" onclick="switchTab('trackerPage')">Heute & Woche</button>
+    <button class="tab-btn" onclick="switchTab('historyPage')">Tagebuch / Historie</button>
+  </div>
 
-  <!-- Dashboard -->
-  <div class="card">
-    <div class="dashboard-title" id="calorieSummary">0 / 2000 kcal</div>
-    <div class="progress-bar-bg">
-      <div class="progress-bar-fill" id="progressBar"></div>
+  <!-- SEITE 1: TRACKER & KI -->
+  <div id="trackerPage" class="page active">
+    <!-- Tages-Dashboard -->
+    <div class="card">
+      <div class="title" id="calorieSummary">0 / 2000 kcal</div>
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" id="progressBar"></div>
+      </div>
+      <div class="macros-grid">
+        <div class="macro-box">Eiweiß<strong class="protein" id="proteinVal">0g</strong></div>
+        <div class="macro-box">Kohlenhydrate<strong class="carbs" id="carbsVal">0g</strong></div>
+        <div class="macro-box">Fett<strong class="fat" id="fatVal">0g</strong></div>
+      </div>
+      <!-- Rezept Empfehlung Button -->
+      <button class="ai-btn" onclick="generateRecipeSuggestion()">💡 KI-Rezeptempfehlung für heute</button>
+      <div id="recipeOutput" class="ai-feedback" style="display:none;"></div>
     </div>
-    <div class="macros-grid">
-      <div class="macro-box">Eiweiß<strong class="protein" id="proteinVal">0g</strong></div>
-      <div class="macro-box">Kohlenhydrate<strong class="carbs" id="carbsVal">0g</strong></div>
-      <div class="macro-box">Fett<strong class="fat" id="fatVal">0g</strong></div>
+
+    <!-- Foto-Analyse KI -->
+    <div class="card">
+      <div class="title">📸 KI-Mahlzeiten-Foto-Analyse</div>
+      <input type="file" id="imageInput" accept="image/*">
+      <button class="ai-btn" onclick="analyzeMealImage()">Foto analysieren & eintragen</button>
+      <div id="imageAnalysisOutput" class="ai-feedback" style="display:none;"></div>
+    </div>
+
+    <!-- Wochenübersicht -->
+    <div class="card">
+      <div class="title">Wochenübersicht (Letzte 7 Tage)</div>
+      <div class="week-grid" id="weekGrid"></div>
+    </div>
+
+    <!-- Produktsuche (Open Food Facts) -->
+    <div class="card">
+      <div class="title">Produktdatenbank (Rewe, DM, etc.)</div>
+      <div class="search-box">
+        <input type="text" id="searchInput" placeholder="z. B. DM Bio Haferdrink...">
+        <button onclick="searchFood()">Suchen</button>
+      </div>
+      <div class="results-list" id="resultsList"></div>
+    </div>
+
+    <!-- Gemini API Key -->
+    <div class="card">
+      <div class="title">Gemini API Einstellungen</div>
+      <div class="search-box">
+        <input type="password" id="apiKeyInput" placeholder="Gemini API Key...">
+        <button onclick="saveApiKey()">Speichern</button>
+      </div>
+    </div>
+
+    <!-- Heutige Mahlzeiten -->
+    <div class="card">
+      <div class="title">Heutige Mahlzeiten</div>
+      <div id="mealList"></div>
     </div>
   </div>
 
-  <!-- Suche über Open Food Facts (Rewe, DM, etc.) -->
-  <div class="card">
-    <div class="dashboard-title">Produktdatenbank (Rewe, DM, etc.)</div>
-    <div class="search-box">
-      <input type="text" id="searchInput" placeholder="z. B. DM Bio Haferdrink, Magerquark...">
-      <button onclick="searchFood()">Suchen</button>
-    </div>
-    <div class="results-list" id="resultsList"></div>
-  </div>
-
-  <!-- Liste der heutigen Mahlzeiten -->
-  <div class="card">
-    <div class="dashboard-title">Heutige Mahlzeiten</div>
-    <div id="mealList">
-      <p style="color: var(--text-muted); font-size: 0.9rem;">Noch keine Einträge vorhanden.</p>
+  <!-- SEITE 2: TAGEBUCH -->
+  <div id="historyPage" class="page">
+    <div class="card">
+      <div class="title">Alle vergangenen Tage</div>
+      <div id="historyList"></div>
     </div>
   </div>
 </div>
 
 <script>
   const DAILY_GOAL = 2000;
-  let meals = JSON.parse(localStorage.getItem('user_meals')) || [];
+  const TODAY_KEY = new Date().toISOString().split('T')[0];
+  
+  let allData = JSON.parse(localStorage.getItem('user_calorie_data')) || {};
+  if (!allData[TODAY_KEY]) allData[TODAY_KEY] = [];
+
+  function switchTab(pageId) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById(pageId).classList.add('active');
+    event.target.classList.add('active');
+    if (pageId === 'historyPage') renderHistory();
+  }
 
   function updateDashboard() {
-    const totalKcal = meals.reduce((sum, m) => sum + m.calories, 0);
-    const totalProtein = meals.reduce((sum, m) => sum + m.protein, 0);
-    const totalCarbs = meals.reduce((sum, m) => sum + m.carbs, 0);
-    const totalFat = meals.reduce((sum, m) => sum + m.fat, 0);
+    const todayMeals = allData[TODAY_KEY] || [];
+    const totalKcal = todayMeals.reduce((s, m) => s + m.calories, 0);
+    const totalP = todayMeals.reduce((s, m) => s + m.protein, 0);
+    const totalC = todayMeals.reduce((s, m) => s + m.carbs, 0);
+    const totalF = todayMeals.reduce((s, m) => s + m.fat, 0);
 
     document.getElementById('calorieSummary').innerText = `${Math.round(totalKcal)} / ${DAILY_GOAL} kcal`;
-    document.getElementById('proteinVal').innerText = `${Math.round(totalProtein)}g`;
-    document.getElementById('carbsVal').innerText = `${Math.round(totalCarbs)}g`;
-    document.getElementById('fatVal').innerText = `${Math.round(totalFat)}g`;
-
-    const progressPct = Math.min((totalKcal / DAILY_GOAL) * 100, 100);
-    document.getElementById('progressBar').style.width = `${progressPct}%`;
+    document.getElementById('proteinVal').innerText = `${Math.round(totalP)}g`;
+    document.getElementById('carbsVal').innerText = `${Math.round(totalC)}g`;
+    document.getElementById('fatVal').innerText = `${Math.round(totalF)}g`;
+    document.getElementById('progressBar').style.width = `${Math.min((totalKcal / DAILY_GOAL) * 100, 100)}%`;
 
     renderMealList();
+    renderWeekGrid();
+  }
+
+  function renderWeekGrid() {
+    const weekGrid = document.getElementById('weekGrid');
+    weekGrid.innerHTML = '';
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().split('T')[0];
+      const dayName = d.toLocaleDateString('de-DE', { weekday: 'short' });
+      const dayMeals = allData[dateStr] || [];
+      const dayKcal = dayMeals.reduce((s, m) => s + m.calories, 0);
+      const heightPct = Math.min((dayKcal / DAILY_GOAL) * 100, 100);
+
+      weekGrid.innerHTML += `
+        <div class="day-col ${dateStr === TODAY_KEY ? 'active-day' : ''}">
+          <div class="day-bar-bg">
+            <div class="day-bar-fill" style="height: ${heightPct}%"></div>
+          </div>
+          <span class="day-label">${dayName}</span>
+          <span style="font-size: 0.65rem; color: var(--text-muted);">${Math.round(dayKcal)}</span>
+        </div>
+      `;
+    }
+  }
+
+  // GEMINI API HELPER
+  async function callGemini(contents) {
+    const apiKey = localStorage.getItem("gemini_api_key");
+    if (!apiKey) {
+      alert("Bitte speichere zuerst deinen Gemini API Key unten!");
+      return null;
+    }
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents })
+      });
+      const data = await res.json();
+      return data.candidates[0].content.parts[0].text;
+    } catch (e) {
+      alert("Fehler bei der Kommunikation mit Gemini API.");
+      return null;
+    }
+  }
+
+  // FOTO ANALYSE FUNKTION
+  async function analyzeMealImage() {
+    const fileInput = document.getElementById('imageInput');
+    const output = document.getElementById('imageAnalysisOutput');
+    if (!fileInput.files[0]) {
+      alert("Bitte wähle zuerst ein Bild aus.");
+      return;
+    }
+
+    output.style.display = 'block';
+    output.innerText = "🔍 Analysiere Bild mit KI...";
+
+    const reader = new FileReader();
+    reader.onload = async function() {
+      const base64Data = reader.result.split(',')[1];
+      
+      const prompt = `Analysiere dieses Essen. Schätze die Inhaltsstoffe, Kalorien und Makronährstoffe (Eiweiß, Kohlenhydrate, Fett).
+Da Kalorienschätzungen von Bildern unsicher sind, bestimme die Kalorien-Range und wähle strikt den 95%-Perzentil-Wert (den oberen, konservativen Schätzwert der Range).
+Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown-Codeblöcke:
+{
+  "name": "Name des Gerichts",
+  "feedback": "Kurze Erklärung zur Range und warum der 95%-Wert gewählt wurde",
+  "calories": 0,
+  "protein": 0,
+  "carbs": 0,
+  "fat": 0
+}`;
+
+      const contents = [{
+        parts: [
+          { text: prompt },
+          { inline_data: { mime_type: fileInput.files[0].type, data: base64Data } }
+        ]
+      }];
+
+      const responseText = await callGemini(contents);
+      if (!responseText) return;
+
+      try {
+        const cleanJson = responseText.replace(/```json|```/g, '').trim();
+        const result = JSON.parse(cleanJson);
+
+        allData[TODAY_KEY].push({
+          id: Date.now(),
+          name: `📸 ${result.name}`,
+          calories: result.calories,
+          protein: result.protein,
+          carbs: result.carbs,
+          fat: result.fat
+        });
+
+        localStorage.setItem('user_calorie_data', JSON.stringify(allData));
+        output.innerText = `✅ Erfasst (95%-Wert): ${result.name}\n${result.calories} kcal | P: ${result.protein}g | K: ${result.carbs}g | F: ${result.fat}g\n\nFeedback: ${result.feedback}`;
+        updateDashboard();
+      } catch (err) {
+        output.innerText = "Fehler beim Parsen der Antwort: " + responseText;
+      }
+    };
+    reader.readAsDataURL(fileInput.files[0]);
+  }
+
+  // REZEPT EMPFEHLUNG FUNKTION
+  async function generateRecipeSuggestion() {
+    const output = document.getElementById('recipeOutput');
+    const todayMeals = allData[TODAY_KEY] || [];
+    const totalKcal = todayMeals.reduce((s, m) => s + m.calories, 0);
+    const remainingKcal = Math.max(0, DAILY_GOAL - totalKcal);
+
+    output.style.display = 'block';
+    output.innerText = "👨‍🍳 Erstelle Rezeptempfehlung basierend auf deinen verbleibenden Kalorien...";
+
+    const prompt = `Der Nutzer hat heute noch genau ${remainingKcal} kcal von seinem Tagesziel (2000 kcal) übrig.
+Basiere deine Empfehlung auf einer normalen, ausgewogenen Kalorienverteilung für typische Mahlzeiten.
+Generiere ein passendes, schnelles und gesundes Rezept, das perfekt in dieses Kalorienbudget passt.
+Gib den Namen des Gerichts, die Nährwerte (Kalorien, Protein, Kohlenhydrate, Fett), Zutaten und eine kurze Zubereitung an. Keep it concise.`;
+
+    const contents = [{ parts: [{ text: prompt }] }];
+    const responseText = await callGemini(contents);
+    if (responseText) {
+      output.innerText = responseText;
+    }
   }
 
   async function searchFood() {
@@ -136,83 +310,81 @@
     if (!query) return;
 
     resultsList.style.display = 'block';
-    resultsList.innerHTML = '<div style="padding: 10px; font-size: 0.9rem;">Suche in Open Food Facts...</div>';
+    resultsList.innerHTML = '<div style="padding: 10px;">Suche läuft...</div>';
 
     try {
-      const url = `https://de.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=5`;
-      const res = await fetch(url);
+      const res = await fetch(`https://de.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=5`);
       const data = await res.json();
 
       if (!data.products || data.products.length === 0) {
-        resultsList.innerHTML = '<div style="padding: 10px; font-size: 0.9rem;">Kein Produkt gefunden.</div>';
+        resultsList.innerHTML = '<div style="padding: 10px;">Kein Produkt gefunden.</div>';
         return;
       }
 
       resultsList.innerHTML = '';
       data.products.forEach(p => {
         const name = p.product_name_de || p.product_name || "Unbekannt";
-        const brand = p.brands ? `(${p.brands})` : '';
         const kcal = Math.round(p.nutriments?.['energy-kcal_100g'] || 0);
-        const protein = p.nutriments?.protein_100g || 0;
-        const carbs = p.nutriments?.carbohydrates_100g || 0;
-        const fat = p.nutriments?.fat_100g || 0;
+        const p_val = p.nutriments?.protein_100g || 0;
+        const c_val = p.nutriments?.carbohydrates_100g || 0;
+        const f_val = p.nutriments?.fat_100g || 0;
 
-        const itemDiv = document.createElement('div');
-        itemDiv.className = 'result-item';
-        itemDiv.innerHTML = `
-          <div>
-            <strong>${name}</strong> <small style="color:var(--text-muted);">${brand}</small>
-            <div class="result-info">${kcal} kcal / 100g</div>
+        resultsList.innerHTML += `
+          <div class="result-item">
+            <div>
+              <strong>${name}</strong>
+              <div style="font-size:0.8rem; color:var(--text-muted);">${kcal} kcal / 100g</div>
+            </div>
+            <button style="padding:4px 8px; font-size:0.8rem;" onclick='addMeal("${name.replace(/'/g, "")}", ${kcal}, ${p_val}, ${c_val}, ${f_val})'>+ Hinzufügen</button>
           </div>
-          <button style="padding: 4px 8px; font-size: 0.8rem;" onclick='addMeal("${name.replace(/'/g, "")}", ${kcal}, ${protein}, ${carbs}, ${fat})'>+ Hinzufügen</button>
         `;
-        resultsList.appendChild(itemDiv);
       });
     } catch (e) {
-      resultsList.innerHTML = '<div style="padding: 10px; font-size: 0.9rem; color: red;">Fehler bei der Suche.</div>';
+      resultsList.innerHTML = '<div style="padding: 10px; color:red;">Fehler bei der Suche.</div>';
     }
   }
 
   function addMeal(name, kcal, p, c, f) {
-    const gramsStr = prompt(`Wie viel Gramm von "${name}" hast du gegessen?`, "100");
-    const grams = parseFloat(gramsStr);
+    const grams = parseFloat(prompt(`Grammanzahl für "${name}":`, "100"));
     if (isNaN(grams) || grams <= 0) return;
 
     const factor = grams / 100;
-    const newMeal = {
+    allData[TODAY_KEY].push({
       id: Date.now(),
       name: `${name} (${grams}g)`,
       calories: kcal * factor,
       protein: p * factor,
       carbs: c * factor,
       fat: f * factor
-    };
+    });
 
-    meals.push(newMeal);
-    localStorage.setItem('user_meals', JSON.stringify(meals));
+    localStorage.setItem('user_calorie_data', JSON.stringify(allData));
     document.getElementById('resultsList').style.display = 'none';
     document.getElementById('searchInput').value = '';
     updateDashboard();
   }
 
-  function deleteMeal(id) {
-    meals = meals.filter(m => m.id !== id);
-    localStorage.setItem('user_meals', JSON.stringify(meals));
+  function deleteMeal(id, dateStr = TODAY_KEY) {
+    allData[dateStr] = allData[dateStr].filter(m => m.id !== id);
+    localStorage.setItem('user_calorie_data', JSON.stringify(allData));
     updateDashboard();
+    if (document.getElementById('historyPage').classList.contains('active')) renderHistory();
   }
 
   function renderMealList() {
     const listEl = document.getElementById('mealList');
-    if (meals.length === 0) {
-      listEl.innerHTML = '<p style="color: var(--text-muted); font-size: 0.9rem;">Noch keine Einträge vorhanden.</p>';
+    const todayMeals = allData[TODAY_KEY] || [];
+    
+    if (todayMeals.length === 0) {
+      listEl.innerHTML = '<p style="color: var(--text-muted); font-size: 0.9rem;">Noch keine Einträge heute.</p>';
       return;
     }
 
-    listEl.innerHTML = meals.map(m => `
+    listEl.innerHTML = todayMeals.map(m => `
       <div class="meal-item">
         <div>
           <strong>${m.name}</strong>
-          <div style="font-size: 0.8rem; color: var(--text-muted);">
+          <div style="font-size:0.8rem; color:var(--text-muted);">
             ${Math.round(m.calories)} kcal | P: ${Math.round(m.protein)}g K: ${Math.round(m.carbs)}g F: ${Math.round(m.fat)}g
           </div>
         </div>
@@ -221,7 +393,47 @@
     `).join('');
   }
 
-  // Initialisierung beim Laden
+  function renderHistory() {
+    const histEl = document.getElementById('historyList');
+    const dates = Object.keys(allData).sort().reverse();
+
+    if (dates.length === 0) {
+      histEl.innerHTML = '<p style="color: var(--text-muted);">Keine Historie verfügbar.</p>';
+      return;
+    }
+
+    histEl.innerHTML = dates.map(dateStr => {
+      const dayMeals = allData[dateStr];
+      if (dayMeals.length === 0) return '';
+      const dayKcal = dayMeals.reduce((s, m) => s + m.calories, 0);
+      const formattedDate = new Date(dateStr).toLocaleDateString('de-DE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+      return `
+        <div class="history-day" style="margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border-color);">
+          <div style="font-weight:600; color:var(--primary); margin-bottom:4px;">${formattedDate} – Total: ${Math.round(dayKcal)} kcal</div>
+          ${dayMeals.map(m => `
+            <div class="meal-item">
+              <div>
+                <div>${m.name}</div>
+                <div style="font-size:0.75rem; color:var(--text-muted);">${Math.round(m.calories)} kcal</div>
+              </div>
+              <button class="delete-btn" onclick="deleteMeal(${m.id}, '${dateStr}')">Löschen</button>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }).join('');
+  }
+
+  function saveApiKey() {
+    const key = document.getElementById("apiKeyInput").value.trim();
+    if (key) localStorage.setItem("gemini_api_key", key);
+    alert("API Key gesichert!");
+  }
+
+  // Initialisierung
+  const savedKey = localStorage.getItem("gemini_api_key");
+  if (savedKey) document.getElementById("apiKeyInput").value = savedKey;
   updateDashboard();
 </script>
 
