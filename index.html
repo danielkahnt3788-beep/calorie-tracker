@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Calorie Tracker & Food DB</title>
+  <style>
+    :root {
+      --bg-color: #f4f6f8;
+      --card-bg: #ffffff;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --text-main: #1f2937;
+      --text-muted: #6b7280;
+      --border-color: #e5e7eb;
+      --accent-protein: #ef4444;
+      --accent-carbs: #f59e0b;
+      --accent-fat: #10b981;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    body { background-color: var(--bg-color); color: var(--text-main); padding: 16px; display: flex; justify-content: center; }
+    .container { width: 100%; max-width: 480px; display: flex; flex-direction: column; gap: 16px; }
+
+    header { text-align: center; margin-bottom: 8px; }
+    header h1 { font-size: 1.5rem; font-weight: 700; color: var(--text-main); }
+
+    .card { background: var(--card-bg); padding: 16px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05); }
+
+    /* Dashboard */
+    .dashboard-title { font-weight: 600; margin-bottom: 12px; font-size: 1.1rem; }
+    .progress-bar-bg { background: #e5e7eb; height: 12px; border-radius: 6px; overflow: hidden; margin-bottom: 12px; }
+    .progress-bar-fill { background: var(--primary); height: 100%; width: 0%; transition: width 0.3s ease; }
+    .macros-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center; font-size: 0.85rem; }
+    .macro-box { padding: 8px; border-radius: 8px; background: #f9fafb; }
+    .macro-box strong { display: block; font-size: 1rem; margin-top: 2px; }
+    .protein { color: var(--accent-protein); }
+    .carbs { color: var(--accent-carbs); }
+    .fat { color: var(--accent-fat); }
+
+    /* Search Input */
+    .search-box { display: flex; gap: 8px; position: relative; }
+    input[type="text"], input[type="number"] { width: 100%; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 0.95rem; outline: none; }
+    input:focus { border-color: var(--primary); }
+    button { background: var(--primary); color: white; border: none; padding: 10px 16px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+    button:hover { background: var(--primary-hover); }
+
+    /* Search Results */
+    .results-list { margin-top: 8px; max-height: 200px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 8px; display: none; }
+    .result-item { padding: 10px; border-bottom: 1px solid var(--border-color); cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+    .result-item:last-child { border-bottom: none; }
+    .result-item:hover { background: #f3f4f6; }
+    .result-info { font-size: 0.85rem; color: var(--text-muted); }
+
+    /* Meal List */
+    .meal-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border-color); }
+    .meal-item:last-child { border-bottom: none; }
+    .delete-btn { background: transparent; color: #ef4444; padding: 4px 8px; font-size: 0.8rem; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <h1>Calorie Tracker</h1>
+  </header>
+
+  <!-- Dashboard -->
+  <div class="card">
+    <div class="dashboard-title" id="calorieSummary">0 / 2000 kcal</div>
+    <div class="progress-bar-bg">
+      <div class="progress-bar-fill" id="progressBar"></div>
+    </div>
+    <div class="macros-grid">
+      <div class="macro-box">Eiweiß<strong class="protein" id="proteinVal">0g</strong></div>
+      <div class="macro-box">Kohlenhydrate<strong class="carbs" id="carbsVal">0g</strong></div>
+      <div class="macro-box">Fett<strong class="fat" id="fatVal">0g</strong></div>
+    </div>
+  </div>
+
+  <!-- Suche über Open Food Facts (Rewe, DM, etc.) -->
+  <div class="card">
+    <div class="dashboard-title">Produktdatenbank (Rewe, DM, etc.)</div>
+    <div class="search-box">
+      <input type="text" id="searchInput" placeholder="z. B. DM Bio Haferdrink, Magerquark...">
+      <button onclick="searchFood()">Suchen</button>
+    </div>
+    <div class="results-list" id="resultsList"></div>
+  </div>
+
+  <!-- Liste der heutigen Mahlzeiten -->
+  <div class="card">
+    <div class="dashboard-title">Heutige Mahlzeiten</div>
+    <div id="mealList">
+      <p style="color: var(--text-muted); font-size: 0.9rem;">Noch keine Einträge vorhanden.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+  const DAILY_GOAL = 2000;
+  let meals = JSON.parse(localStorage.getItem('user_meals')) || [];
+
+  function updateDashboard() {
+    const totalKcal = meals.reduce((sum, m) => sum + m.calories, 0);
+    const totalProtein = meals.reduce((sum, m) => sum + m.protein, 0);
+    const totalCarbs = meals.reduce((sum, m) => sum + m.carbs, 0);
+    const totalFat = meals.reduce((sum, m) => sum + m.fat, 0);
+
+    document.getElementById('calorieSummary').innerText = `${Math.round(totalKcal)} / ${DAILY_GOAL} kcal`;
+    document.getElementById('proteinVal').innerText = `${Math.round(totalProtein)}g`;
+    document.getElementById('carbsVal').innerText = `${Math.round(totalCarbs)}g`;
+    document.getElementById('fatVal').innerText = `${Math.round(totalFat)}g`;
+
+    const progressPct = Math.min((totalKcal / DAILY_GOAL) * 100, 100);
+    document.getElementById('progressBar').style.width = `${progressPct}%`;
+
+    renderMealList();
+  }
+
+  async function searchFood() {
+    const query = document.getElementById('searchInput').value.trim();
+    const resultsList = document.getElementById('resultsList');
+    if (!query) return;
+
+    resultsList.style.display = 'block';
+    resultsList.innerHTML = '<div style="padding: 10px; font-size: 0.9rem;">Suche in Open Food Facts...</div>';
+
+    try {
+      const url = `https://de.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=5`;
+      const res = await fetch(url);
+      const data = await res.json();
+
+      if (!data.products || data.products.length === 0) {
+        resultsList.innerHTML = '<div style="padding: 10px; font-size: 0.9rem;">Kein Produkt gefunden.</div>';
+        return;
+      }
+
+      resultsList.innerHTML = '';
+      data.products.forEach(p => {
+        const name = p.product_name_de || p.product_name || "Unbekannt";
+        const brand = p.brands ? `(${p.brands})` : '';
+        const kcal = Math.round(p.nutriments?.['energy-kcal_100g'] || 0);
+        const protein = p.nutriments?.protein_100g || 0;
+        const carbs = p.nutriments?.carbohydrates_100g || 0;
+        const fat = p.nutriments?.fat_100g || 0;
+
+        const itemDiv = document.createElement('div');
+        itemDiv.className = 'result-item';
+        itemDiv.innerHTML = `
+          <div>
+            <strong>${name}</strong> <small style="color:var(--text-muted);">${brand}</small>
+            <div class="result-info">${kcal} kcal / 100g</div>
+          </div>
+          <button style="padding: 4px 8px; font-size: 0.8rem;" onclick='addMeal("${name.replace(/'/g, "")}", ${kcal}, ${protein}, ${carbs}, ${fat})'>+ Hinzufügen</button>
+        `;
+        resultsList.appendChild(itemDiv);
+      });
+    } catch (e) {
+      resultsList.innerHTML = '<div style="padding: 10px; font-size: 0.9rem; color: red;">Fehler bei der Suche.</div>';
+    }
+  }
+
+  function addMeal(name, kcal, p, c, f) {
+    const gramsStr = prompt(`Wie viel Gramm von "${name}" hast du gegessen?`, "100");
+    const grams = parseFloat(gramsStr);
+    if (isNaN(grams) || grams <= 0) return;
+
+    const factor = grams / 100;
+    const newMeal = {
+      id: Date.now(),
+      name: `${name} (${grams}g)`,
+      calories: kcal * factor,
+      protein: p * factor,
+      carbs: c * factor,
+      fat: f * factor
+    };
+
+    meals.push(newMeal);
+    localStorage.setItem('user_meals', JSON.stringify(meals));
+    document.getElementById('resultsList').style.display = 'none';
+    document.getElementById('searchInput').value = '';
+    updateDashboard();
+  }
+
+  function deleteMeal(id) {
+    meals = meals.filter(m => m.id !== id);
+    localStorage.setItem('user_meals', JSON.stringify(meals));
+    updateDashboard();
+  }
+
+  function renderMealList() {
+    const listEl = document.getElementById('mealList');
+    if (meals.length === 0) {
+      listEl.innerHTML = '<p style="color: var(--text-muted); font-size: 0.9rem;">Noch keine Einträge vorhanden.</p>';
+      return;
+    }
+
+    listEl.innerHTML = meals.map(m => `
+      <div class="meal-item">
+        <div>
+          <strong>${m.name}</strong>
+          <div style="font-size: 0.8rem; color: var(--text-muted);">
+            ${Math.round(m.calories)} kcal | P: ${Math.round(m.protein)}g K: ${Math.round(m.carbs)}g F: ${Math.round(m.fat)}g
+          </div>
+        </div>
+        <button class="delete-btn" onclick="deleteMeal(${m.id})">Löschen</button>
+      </div>
+    `).join('');
+  }
+
+  // Initialisierung beim Laden
+  updateDashboard();
+</script>
+
+</body>
+</html>
