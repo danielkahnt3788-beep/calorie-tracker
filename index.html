@@ -199,7 +199,7 @@
     }
   }
 
-// GEMINI API INTEGRATION ÜBER DIE INTERACTIONS API
+// GEMINI API INTEGRATION ÜBER DIE v1beta INTERACTIONS API
 async function callGemini(contents, systemInstruction = "") {
   const apiKey = localStorage.getItem("gemini_api_key");
 
@@ -208,16 +208,14 @@ async function callGemini(contents, systemInstruction = "") {
     return null;
   }
 
-  // Die Interactions API nutzt den v1alpha Endpunkt
-  const url = `https://generativelanguage.googleapis.com/v1/interactions?key=${apiKey}`;
+  // Endpunkt auf die unterstützte v1beta Version umgestellt
+  const url = `https://generativelanguage.googleapis.com/v1beta/interactions?key=${apiKey}`;
 
-  // Formatting der Inhalte für das Interactions-Protokoll
   const formattedInputs = contents.map(item => {
     if (typeof item === 'string') {
       return { role: "user", content: [{ text: item }] };
     }
     
-    // Falls bereits strukturierte Parts (Text + Bild) übergeben werden
     if (item.parts) {
       const parts = item.parts.map(p => {
         if (p.text) return { text: p.text };
@@ -239,7 +237,7 @@ async function callGemini(contents, systemInstruction = "") {
   });
 
   const requestBody = {
-    model: "models/gemini-3.6-flash",
+    model: "models/gemini-2.5-flash",
     input: formattedInputs
   };
 
@@ -267,9 +265,7 @@ async function callGemini(contents, systemInstruction = "") {
 
     const data = await response.json();
     
-    // Extraktion der Antwort aus dem Interactions-Response-Format
     if (data.output) {
-      // Wenn der Output ein Array von Content-Blocks ist
       if (Array.isArray(data.output)) {
         const textContent = data.output
           .flatMap(o => o.content || [])
@@ -278,12 +274,9 @@ async function callGemini(contents, systemInstruction = "") {
           .join("\n");
         if (textContent) return textContent;
       }
-      
-      // Falls der Output direkt im Text-Feld liegt
       if (typeof data.output === 'string') return data.output;
     }
 
-    // Fallback-Prüfung für alternative Response-Strukturen
     if (data.candidates && data.candidates[0]?.content?.parts[0]?.text) {
       return data.candidates[0].content.parts[0].text;
     }
