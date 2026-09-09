@@ -135,6 +135,15 @@
     .recipe-card-actions { margin-top: 0.6rem; }
     .recipe-card-actions button { margin-top: 0; padding: 0.5rem; font-size: 0.85rem; }
 
+    /* Historie: aufklappbare Tageskarten mit Mahlzeiten-Details */
+    .history-card { cursor: pointer; width: 100%; }
+    .history-card-summary { display: flex; justify-content: space-between; align-items: center; }
+    .history-expand-hint { font-size: 0.7rem; color: var(--text-muted); }
+    .history-card-details { display: none; margin-top: 0.7rem; padding-top: 0.7rem; border-top: 1px solid var(--border); }
+    .history-card.expanded .history-card-details { display: block; }
+    .history-meal-row { display: flex; justify-content: space-between; align-items: center; padding: 0.4rem 0; font-size: 0.85rem; }
+    .history-meal-row:not(:last-child) { border-bottom: 1px dashed var(--border); }
+
     /* Leere Zustände */
     .empty-state { text-align: center; padding: 1.6rem 0.5rem; color: var(--text-muted); }
     .empty-state .empty-icon { font-size: 2.2rem; display: block; margin-bottom: 0.5rem; }
@@ -846,6 +855,12 @@
         const meals = allData[date];
 
         const li = document.createElement('li');
+        li.style.display = 'block';
+        li.style.padding = '0.75rem 0';
+
+        const card = el('div', { className: 'history-card' });
+
+        const summary = el('div', { className: 'history-card-summary' });
         const infoDiv = el('div');
         infoDiv.appendChild(el('strong', { text: date }));
         infoDiv.appendChild(document.createElement('br'));
@@ -854,10 +869,31 @@
           style: { color: 'var(--text-muted)' }
         }));
 
-        const span = el('span', { text: `${totals.calories} kcal`, style: { fontWeight: 'bold', color: 'var(--primary)' } });
+        const rightWrap = el('div', { style: { textAlign: 'right' } });
+        rightWrap.appendChild(el('span', { text: `${totals.calories} kcal`, style: { fontWeight: 'bold', color: 'var(--primary)', display: 'block' } }));
+        rightWrap.appendChild(el('span', { className: 'history-expand-hint', text: 'antippen für Details' }));
 
-        li.appendChild(infoDiv);
-        li.appendChild(span);
+        summary.appendChild(infoDiv);
+        summary.appendChild(rightWrap);
+
+        const details = el('div', { className: 'history-card-details' });
+        meals.forEach(item => {
+          const row = el('div', { className: 'history-meal-row' });
+          const nameEl = el('div', { text: item.name });
+          const macroEl = el('div', {
+            text: `${item.calories} kcal | P: ${item.protein}g K: ${item.carbs}g F: ${item.fat}g`,
+            style: { color: 'var(--text-muted)', fontSize: '0.8rem', textAlign: 'right' }
+          });
+          row.appendChild(nameEl);
+          row.appendChild(macroEl);
+          details.appendChild(row);
+        });
+
+        card.appendChild(summary);
+        card.appendChild(details);
+        card.addEventListener('click', () => card.classList.toggle('expanded'));
+
+        li.appendChild(card);
         historyListEl.appendChild(li);
       });
     }
