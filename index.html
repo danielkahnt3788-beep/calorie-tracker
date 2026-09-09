@@ -60,8 +60,11 @@
     body.dark .macro-bar-track { background: #334155; }
     .macro-bar-fill { height: 100%; border-radius: 999px; transition: width .4s ease; }
 
+    /* Tagesübersicht: Serie links, Kalorien-Ring rechts */
+    .dashboard-top-row { display: flex; align-items: center; justify-content: center; gap: 1.2rem; flex-wrap: wrap; }
+
     /* Kalorien-Ring */
-    .calorie-ring-wrap { position: relative; width: 170px; height: 170px; margin: 0 auto; }
+    .calorie-ring-wrap { position: relative; width: 170px; height: 170px; margin: 0; cursor: pointer; flex-shrink: 0; }
     .calorie-ring-wrap svg { width: 100%; height: 100%; transform: rotate(-90deg); }
     .calorie-ring-track { fill: none; stroke: var(--border); stroke-width: 14; }
     .calorie-ring-progress { fill: none; stroke: #10b981; stroke-width: 14; stroke-linecap: round; transition: stroke-dashoffset .5s ease, stroke .3s ease; }
@@ -93,11 +96,10 @@
     .week-bar.over { background: #ef4444; }
     .week-bar-label { font-size: 0.7rem; color: var(--text-muted); margin-top: 4px; }
 
-    /* Streak */
-    .streak-card { text-align: center; }
-    .streak-icon { font-size: 1.8rem; }
-    .streak-value { font-size: 1.3rem; font-weight: bold; margin-top: 0.2rem; }
-    .streak-caption { font-size: 0.8rem; color: var(--text-muted); }
+    /* Serie (in die Tagesübersicht integriert), wächst mit der Länge der Serie */
+    .streak-inline { display: flex; flex-direction: column; align-items: center; justify-content: center; flex-shrink: 0; min-width: 64px; text-align: center; }
+    .streak-icon { font-size: 1.4rem; transition: font-size .3s ease; }
+    .streak-value { font-weight: bold; margin-top: 0.15rem; transition: font-size .3s ease; font-size: 0.85rem; }
 
     /* Einstellungen: Zeilen & Umschalter */
     .settings-row { display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem; gap: 1rem; }
@@ -199,14 +201,20 @@
     <div id="pageDashboard" class="page active">
       <div class="card">
         <h2>Tagesübersicht (<span id="currentDate"></span>)</h2>
-        <div class="calorie-ring-wrap">
-          <svg viewBox="0 0 170 170">
-            <circle class="calorie-ring-track" cx="85" cy="85" r="72"></circle>
-            <circle id="calorieRingProgress" class="calorie-ring-progress" cx="85" cy="85" r="72"></circle>
-          </svg>
-          <div class="calorie-ring-center">
-            <span id="totalCalories" class="calorie-ring-value">0</span>
-            <span class="calorie-ring-label">/ <span id="calorieLimitDisplay">2200</span> kcal</span>
+        <div class="dashboard-top-row">
+          <div class="streak-inline" title="Tage in Folge im Kalorienlimit">
+            <div id="streakIcon" class="streak-icon">🔥</div>
+            <div id="streakValue" class="streak-value">0 Tage</div>
+          </div>
+          <div class="calorie-ring-wrap" onclick="scrollToMealList()" title="Zu den Mahlzeiten springen">
+            <svg viewBox="0 0 170 170">
+              <circle class="calorie-ring-track" cx="85" cy="85" r="72"></circle>
+              <circle id="calorieRingProgress" class="calorie-ring-progress" cx="85" cy="85" r="72"></circle>
+            </svg>
+            <div class="calorie-ring-center">
+              <span id="totalCalories" class="calorie-ring-value">0</span>
+              <span class="calorie-ring-label">/ <span id="calorieLimitDisplay">2200</span> kcal</span>
+            </div>
           </div>
         </div>
         <div class="stat-grid">
@@ -226,19 +234,8 @@
             <div class="macro-bar-track"><div id="fatBar" class="macro-bar-fill" style="background:#10b981; width:0%;"></div></div>
           </div>
         </div>
-      </div>
-
-      <!-- STREAK -->
-      <div class="card streak-card">
-        <div class="streak-icon">🔥</div>
-        <div id="streakValue" class="streak-value">0 Tage</div>
-        <div class="streak-caption">im Kalorienlimit (in Folge)</div>
-      </div>
-
-      <!-- WOCHENÜBERSICHT -->
-      <div class="card">
-        <h2>📅 Wochenübersicht</h2>
-        <div id="weekChart" class="week-chart"></div>
+        <button class="btn-secondary" style="margin-top: 1rem;" onclick="evaluateDayWithAI()">🤖 KI-Bewertung des Tages</button>
+        <div id="dayEvaluationOutput" style="margin-top: 0.6rem; font-size: 0.9rem; white-space: pre-line;"></div>
       </div>
 
       <!-- FOTO ANALYSE -->
@@ -274,6 +271,12 @@
 
     <!-- SEITE 2: HISTORIE -->
     <div id="pageHistory" class="page">
+      <!-- WOCHENÜBERSICHT -->
+      <div class="card">
+        <h2>📅 Wochenübersicht</h2>
+        <div id="weekChart" class="week-chart"></div>
+      </div>
+
       <div class="card">
         <h2>Tagebuch & Verlaufsdaten</h2>
         <ul id="historyList"></ul>
@@ -600,6 +603,58 @@
       requestAnimationFrame(frame);
     }
 
+    // ===== WISCH-NAVIGATION ZWISCHEN DEN REITERN =====
+    // Wischen auf nicht-interaktiven Flächen (nicht auf Buttons, Inputs,
+    // Karten mit eigener Wisch-Löschfunktion o.ä.) wechselt den Reiter.
+    const PAGE_ORDER = ['dashboard', 'history', 'recipes', 'settings'];
+    const SWIPE_NAV_EXCLUDE = 'button, input, select, textarea, a, nav, .swipe-item, .stepper, .recipe-card, .modal-overlay, .scanner-overlay, .calorie-ring-wrap';
+
+    function navigateSwipe(direction) {
+      const activePage = document.querySelector('.page.active');
+      if (!activePage) return;
+      const currentName = activePage.id.replace('page', '').toLowerCase();
+      const idx = PAGE_ORDER.indexOf(currentName);
+      if (idx === -1) return;
+      const nextIdx = idx + direction;
+      if (nextIdx < 0 || nextIdx >= PAGE_ORDER.length) return;
+      switchPage(PAGE_ORDER[nextIdx]);
+    }
+
+    function attachPageSwipeNavigation() {
+      const container = document.querySelector('.container');
+      if (!container) return;
+      let startX = 0, startY = 0, dragging = false, isHorizontal = null;
+      const threshold = 70;
+
+      container.addEventListener('pointerdown', (e) => {
+        if (e.target.closest(SWIPE_NAV_EXCLUDE)) { dragging = false; return; }
+        startX = e.clientX; startY = e.clientY; dragging = true; isHorizontal = null;
+      });
+
+      container.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        if (isHorizontal === null && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) {
+          isHorizontal = Math.abs(dx) > Math.abs(dy) * 1.2;
+        }
+      });
+
+      const endSwipe = (e) => {
+        if (!dragging) return;
+        dragging = false;
+        if (isHorizontal) {
+          const dx = e.clientX - startX;
+          if (Math.abs(dx) > threshold) {
+            navigateSwipe(dx < 0 ? 1 : -1);
+          }
+        }
+      };
+
+      container.addEventListener('pointerup', endSwipe);
+      container.addEventListener('pointercancel', endSwipe);
+    }
+
     window.addEventListener('DOMContentLoaded', async () => {
       if(localStorage.getItem('gemini_api_key')) {
         document.getElementById('geminiKeyInput').value = localStorage.getItem('gemini_api_key');
@@ -632,6 +687,7 @@
       }
 
       updateDashboard();
+      attachPageSwipeNavigation();
 
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('sw.js').catch(err => {
@@ -651,6 +707,7 @@
         document.getElementById('pageHistory').classList.add('active');
         document.getElementById('navHistory').classList.add('active');
         renderHistory();
+        renderWeekChart();
       } else if (pageName === 'recipes') {
         document.getElementById('pageRecipes').classList.add('active');
         document.getElementById('navRecipes').classList.add('active');
@@ -754,6 +811,25 @@
       return streak;
     }
 
+    // Zeigt die Serie an und lässt Icon/Zahl mit der Länge der Serie
+    // graduell größer werden (Tag 1 bis 10, danach keine weitere Steigerung).
+    function updateStreakDisplay(streak) {
+      const iconEl = document.getElementById('streakIcon');
+      const valueEl = document.getElementById('streakValue');
+      const clamped = Math.min(Math.max(streak, 0), 10);
+      const growth = clamped / 10; // 0 bis 1
+
+      iconEl.style.fontSize = (1.4 + growth * 1.4) + 'rem';   // 1.4rem -> 2.8rem
+      valueEl.style.fontSize = (0.85 + growth * 0.65) + 'rem'; // 0.85rem -> 1.5rem
+      valueEl.textContent = streak + (streak === 1 ? ' Tag' : ' Tage');
+    }
+
+    // Springt zu den heutigen Mahlzeiten (Klick auf den Kalorien-Ring).
+    function scrollToMealList() {
+      const target = document.getElementById('mealList');
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
     function updateDashboard() {
       const todayMeals = allData[TODAY_KEY] || [];
       const totals = dayTotals(TODAY_KEY);
@@ -813,7 +889,7 @@
       document.getElementById('fatBar').style.width = Math.min((totals.fat / targets.fat) * 100, 100) + '%';
 
       updateCalorieRing(totals.calories, limit);
-      document.getElementById('streakValue').textContent = computeStreak() + ' Tage';
+      updateStreakDisplay(computeStreak());
 
       renderWeekChart();
     }
@@ -1017,6 +1093,41 @@
         showToast("Netzwerkfehler bei der Kommunikation mit der Gemini API.", 'error');
         return null;
       }
+    }
+
+    // ===== KI-BEWERTUNG DES TAGES =====
+    async function evaluateDayWithAI() {
+      const output = document.getElementById('dayEvaluationOutput');
+      const meals = allData[TODAY_KEY] || [];
+
+      if (meals.length === 0) {
+        showToast('Noch keine Mahlzeiten erfasst – es gibt nichts zu bewerten.', 'error');
+        return;
+      }
+
+      const totals = dayTotals(TODAY_KEY);
+      const limit = getCalorieLimit();
+      const mealListText = meals.map(m => `- ${m.name}: ${m.calories} kcal (P: ${m.protein}g, K: ${m.carbs}g, F: ${m.fat}g)`).join('\n');
+
+      output.innerHTML = '<span class="spinner"></span>KI bewertet deinen Tag...';
+
+      const prompt = `Bewerte kurz und konstruktiv die bisherige Ernährung dieser Person für heute.
+
+Tageslimit: ${limit} kcal
+Bisher verzehrt: ${totals.calories} kcal (Eiweiß: ${totals.protein}g, Kohlenhydrate: ${totals.carbs}g, Fett: ${totals.fat}g)
+Erfasste Mahlzeiten:
+${mealListText}
+
+Gib eine kurze Einschätzung (max. 4-5 Sätze, normaler Fließtext, KEIN JSON, KEIN Markdown, keine Überschriften) zu:
+- Ob die Makroverteilung ausgewogen wirkt
+- Ob die Kalorienbilanz zum Tageslimit passt
+- Ob die Mahlzeiten eher blutzuckerstabil (Ballaststoffe/Eiweiß) oder eher ungünstig wirken
+- Einen konkreten, freundlichen Tipp für den Rest des Tages`;
+
+      const responseText = await callGeminiInteractions(prompt);
+      if (!responseText) { output.innerText = ''; return; }
+
+      output.innerText = responseText;
     }
 
     // BILD-ANALYSE FUNKTION
