@@ -766,6 +766,36 @@ Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown:
     // Open Food Facts ist eine freie, offene Lebensmitteldatenbank und
     // benötigt keinen API-Key: https://world.openfoodfacts.org
     const OFF_FIELDS = "code,product_name,brands,nutriments,image_small_url";
+    const MAX_FOOD_RESULTS = 5;
+
+    // Der ältere /cgi/search.pl-Endpunkt liefert bei Open Food Facts
+    // gelegentlich serverseitige 503-Fehler (bekanntes Infrastruktur-
+    // problem, unabhängig von eigenen Anfragen/Rate-Limits).
+    async function fetchFoodSearchLegacy(query) {
+      try {
+        const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=${MAX_FOOD_RESULTS}`;
+        const res = await fetch(url);
+        if (!res.ok) return { ok: false, products: [] };
+        const data = await res.json();
+        return { ok: true, products: data.products || [] };
+      } catch (e) {
+        return { ok: false, products: [] };
+      }
+    }
+
+    // Neuere, von Open Food Facts empfohlene Such-API (Search-a-licious)
+    // als Ausweichmöglichkeit, falls der Legacy-Endpunkt nicht antwortet.
+    async function fetchFoodSearchAlicious(query) {
+      try {
+        const url = `https://search.openfoodfacts.org/search?q=${encodeURIComponent(query)}&page_size=${MAX_FOOD_RESULTS}&langs=de,en`;
+        const res = await fetch(url);
+        if (!res.ok) return { ok: false, products: [] };
+        const data = await res.json();
+        return { ok: true, products: data.hits || data.products || [] };
+      } catch (e) {
+        return { ok: false, products: [] };
+      }
+    }
 
     async function searchFoodDatabase() {
       const query = document.getElementById('foodSearchInput').value.trim();
@@ -779,31 +809,45 @@ Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown:
       resultsEl.innerHTML = '';
       resultsEl.appendChild(el('div', { text: '🔍 Suche in der Lebensmitteldatenbank...', style: { color: 'var(--text-muted)', marginTop: '0.5rem' } }));
 
-      try {
-        // Hinweis: /api/v2/search unterstützt KEINE Freitextsuche (nur
-        // strukturierte Filter wie Marke/Kategorie). Für eine Suche wie
-        // "DM Hafermilch" braucht es den Legacy-Endpunkt /cgi/search.pl,
-        // der Freitextsuche unterstützt (search_terms).
-        const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=8`;
-        const res = await fetch(url);
-        const data = await res.json();
-        renderFoodResults(data.products || []);
-      } catch (e) {
-        resultsEl.innerHTML = '';
-        resultsEl.appendChild(el('div', { text: 'Fehler bei der Suche in der Lebensmitteldatenbank.', style: { color: '#ef4444', marginTop: '0.5rem' } }));
+      // Erst den bisherigen Endpunkt versuchen; liefert er nichts
+      // Brauchbares, automatisch auf die neuere API ausweichen. So bleibt
+      // die Suche nutzbar, auch wenn einer der beiden Dienste bei Open
+      // Food Facts kurzzeitig ausfällt.
+      let result = await fetchFoodSearchLegacy(query);
+      if (!result.ok || result.products.length === 0) {
+        const fallback = await fetchFoodSearchAlicious(query);
+        if (fallback.products.length > 0) {
+          result = fallback;
+        } else if (!result.ok && !fallback.ok) {
+          resultsEl.innerHTML = '';
+          resultsEl.appendChild(el('div', {
+            text: 'Die Lebensmitteldatenbank ist gerade nicht erreichbar. Bitte in ein paar Minuten erneut versuchen.',
+            style: { color: '#ef4444', marginTop: '0.5rem' }
+          }));
+          return;
+        }
       }
+
+      renderFoodResults(result.products);
     }
 
     function renderFoodResults(products) {
       const resultsEl = document.getElementById('foodSearchResults');
       resultsEl.innerHTML = '';
 
-      const withNutriments = products.filter(p => p.nutriments && p.nutriments['energy-kcal_100g'] != null);
+      const withNutriments = products
+        .filter(p => p.nutriments && p.nutriments['energy-kcal_100g'] != null)
+        .slice(0, MAX_FOOD_RESULTS);
 
       if (withNutriments.length === 0) {
         resultsEl.appendChild(el('div', { text: 'Keine passenden Produkte mit Nährwertangaben gefunden.', style: { color: 'var(--text-muted)', marginTop: '0.5rem' } }));
         return;
       }
+
+      resultsEl.appendChild(el('div', {
+        text: `Top ${withNutriments.length} Treffer – bitte das passende Produkt auswählen:`,
+        style: { fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.5rem' }
+      }));
 
       withNutriments.forEach(p => {
         const n = p.nutriments;
