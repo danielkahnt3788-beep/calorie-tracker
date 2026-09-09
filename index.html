@@ -95,6 +95,9 @@
     .week-bar { width: 60%; background: var(--primary); border-radius: 4px 4px 0 0; min-height: 3px; transition: height .3s; }
     .week-bar.over { background: #ef4444; }
     .week-bar-label { font-size: 0.7rem; color: var(--text-muted); margin-top: 4px; }
+    .week-bar-stacked { width: 60%; border-radius: 4px 4px 0 0; min-height: 3px; transition: height .3s; display: flex; flex-direction: column; overflow: hidden; }
+    .week-bar-stacked > div { width: 100%; }
+    .week-macro-legend { font-size: 0.7rem; color: var(--text-muted); margin-bottom: 0.3rem; }
 
     /* Serie (in die Tagesübersicht integriert), wächst mit der Länge der Serie */
     .streak-inline { display: flex; flex-direction: column; align-items: center; justify-content: center; flex-shrink: 0; min-width: 64px; text-align: center; }
@@ -273,7 +276,14 @@
     <div id="pageHistory" class="page">
       <!-- WOCHENÜBERSICHT -->
       <div class="card">
-        <h2>📅 Wochenübersicht</h2>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 0.5rem;">
+          <h2 style="margin-bottom: 0;">📅 Wochenübersicht</h2>
+          <label class="switch" title="Makro-Anteile statt einfarbiger Balken anzeigen">
+            <input type="checkbox" id="weekMacroToggle" onchange="renderWeekChart()">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div id="weekMacroLegend" class="week-macro-legend" style="display:none;">🔴 Eiweiß · 🟡 Kohlenhydrate · 🟢 Fett – Balkenhöhe bleibt die Kalorienmenge</div>
         <div id="weekChart" class="week-chart"></div>
       </div>
 
@@ -897,6 +907,9 @@
     // ===== WOCHENÜBERSICHT =====
     function renderWeekChart() {
       const container = document.getElementById('weekChart');
+      const legend = document.getElementById('weekMacroLegend');
+      const showMacros = document.getElementById('weekMacroToggle').checked;
+      legend.style.display = showMacros ? 'block' : 'none';
       container.innerHTML = '';
 
       const limit = getCalorieLimit();
@@ -907,17 +920,41 @@
         dateKeys.push(d.toISOString().split('T')[0]);
       }
 
-      const dayCalorieValues = dateKeys.map(k => dayTotals(k).calories);
+      const dayTotalsValues = dateKeys.map(k => dayTotals(k));
+      const dayCalorieValues = dayTotalsValues.map(t => t.calories);
       const maxVal = Math.max(limit, ...dayCalorieValues, 1);
 
       dateKeys.forEach((dateKey, i) => {
-        const cals = dayCalorieValues[i];
+        const totals = dayTotalsValues[i];
+        const cals = totals.calories;
+        // Balkenhöhe bleibt immer die Kalorienmenge – Makros ändern nur die Farbe/Füllung
         const pct = Math.max((cals / maxVal) * 100, cals > 0 ? 4 : 2);
 
         const wrap = el('div', { className: 'week-bar-wrap' });
         const valueLbl = el('div', { className: 'week-bar-value', text: cals > 0 ? cals : '' });
 
-        const bar = el('div', { className: 'week-bar' + (cals > limit ? ' over' : '') });
+        let bar;
+        if (showMacros) {
+          // Kalorien aus den Makros ableiten, um deren Anteil an der
+          // Balkenhöhe proportional darzustellen (P/K: 4 kcal/g, F: 9 kcal/g)
+          const pCal = totals.protein * 4;
+          const cCal = totals.carbs * 4;
+          const fCal = totals.fat * 9;
+          const macroCalSum = pCal + cCal + fCal;
+
+          bar = el('div', { className: 'week-bar-stacked' });
+          bar.title = `P: ${totals.protein}g · K: ${totals.carbs}g · F: ${totals.fat}g`;
+
+          if (macroCalSum > 0) {
+            bar.appendChild(el('div', { style: { flex: (pCal / macroCalSum) || 0, background: '#ef4444' } }));
+            bar.appendChild(el('div', { style: { flex: (cCal / macroCalSum) || 0, background: '#eab308' } }));
+            bar.appendChild(el('div', { style: { flex: (fCal / macroCalSum) || 0, background: '#10b981' } }));
+          } else {
+            bar.style.background = 'var(--border)';
+          }
+        } else {
+          bar = el('div', { className: 'week-bar' + (cals > limit ? ' over' : '') });
+        }
         bar.style.height = pct + '%';
 
         const isToday = dateKey === TODAY_KEY;
