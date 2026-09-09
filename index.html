@@ -87,11 +87,22 @@
         </div>
       </div>
 
+      <!-- FOTO ANALYSE -->
       <div class="card">
         <h2>📸 KI Foto-Analyse</h2>
-        <input type="file" id="imageInput" accept="image/*" capture="environment">
-        <button class="btn-primary" onclick="analyzeMealImage()">Essen auf Foto analysieren</button>
+        <!-- Ohne capture-Attribut fragt das Gerät nach Kamera ODER Galerie -->
+        <input type="file" id="imageInput" accept="image/*">
+        <button class="btn-primary" onclick="analyzeMealImage()">Essen analysieren</button>
         <div id="imageAnalysisOutput" style="margin-top: 0.8rem; font-size: 0.9rem; white-space: pre-line;"></div>
+      </div>
+
+      <!-- REZEPT GENERATOR -->
+      <div class="card">
+        <h2>👨‍🍳 KI Rezept-Generator</h2>
+        <input type="text" id="recipeIngredients" placeholder="Zutaten eingeben (z.B. Eier, Tomaten, Reis)">
+        <button class="btn-primary" onclick="generateRecipe()">Rezept aus Zutaten erstellen</button>
+        <div id="recipeOutput" style="margin-top: 0.8rem; font-size: 0.9rem; white-space: pre-line;"></div>
+        <button id="addRecipeBtn" class="btn-primary" style="display:none; background:#10b981; margin-top:0.5rem;" onclick="addRecipeToMeals()">Rezept ins Tagebuch eintragen</button>
       </div>
 
       <div class="card">
@@ -191,6 +202,7 @@
   <script>
     const TODAY_KEY = new Date().toISOString().split('T')[0];
     let allData = JSON.parse(localStorage.getItem('user_calorie_data')) || {};
+    let currentGeneratedRecipe = null;
 
     if (!allData[TODAY_KEY]) {
       allData[TODAY_KEY] = [];
@@ -318,8 +330,8 @@
       }
     }
 
-    // VOLLSTÄNDIG KORRIGIERTE INTERACTIONS API LOGIK
-    async function callGeminiInteractions(textPrompt, imageBase64, mimeType) {
+    // INTERACTIONS API CALL (UNTERSTÜTZT TEXT UND OPTIONAL BILD)
+    async function callGeminiInteractions(textPrompt, imageBase64 = null, mimeType = null) {
       const apiKey = localStorage.getItem("gemini_api_key");
       if (!apiKey) {
         alert("Bitte gib zuerst einen Gemini API Key in den Einstellungen ein!");
@@ -328,17 +340,15 @@
 
       const url = `https://generativelanguage.googleapis.com/v1beta/interactions?key=${apiKey}`;
 
-      const inputSteps = [
-        {
-          type: "text",
-          text: textPrompt
-        },
-        {
+      const inputSteps = [{ type: "text", text: textPrompt }];
+
+      if (imageBase64) {
+        inputSteps.push({
           type: "image",
           data: imageBase64,
           mime_type: mimeType || "image/jpeg"
-        }
-      ];
+        });
+      }
 
       try {
         const response = await fetch(url, {
@@ -352,7 +362,6 @@
 
         if (!response.ok) {
           const errData = await response.json();
-          console.error("Interactions API Fehler:", errData);
           alert(`API Fehler (${response.status}): ${errData.error?.message || 'Ungültige Anfrage'}`);
           return null;
         }
@@ -373,7 +382,6 @@
         alert("Keine gültige Textantwort von der API erhalten.");
         return null;
       } catch (e) {
-        console.error("Netzwerkfehler bei Gemini API:", e);
         alert("Netzwerkfehler bei der Kommunikation mit der Gemini API.");
         return null;
       }
@@ -430,6 +438,63 @@ Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown:
         }
       };
       reader.readAsDataURL(fileInput.files[0]);
+    }
+
+    // REZEPT GENERATION
+    async function generateRecipe() {
+      const ingredients = document.getElementById('recipeIngredients').value.trim();
+      const output = document.getElementById('recipeOutput');
+      const addBtn = document.getElementById('addRecipeBtn');
+
+      if (!ingredients) {
+        alert("Bitte gib ein paar Zutaten ein.");
+        return;
+      }
+
+      output.innerText = "👨‍🍳 Erstelle Rezept mit KI...";
+      addBtn.style.display = 'none';
+
+      const prompt = `Erstelle ein kurzes Rezept aus folgenden Zutaten: ${ingredients}.
+Schätze die Nährwerte für eine Portion.
+Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown:
+{
+  "name": "Rezeptname",
+  "instructions": "Kurze Anleitung zur Zubereitung",
+  "calories": 0,
+  "protein": 0,
+  "carbs": 0,
+  "fat": 0
+}`;
+
+      const responseText = await callGeminiInteractions(prompt);
+      if (!responseText) return;
+
+      try {
+        const cleanJson = responseText.replace(/```json|```/g, '').trim();
+        currentGeneratedRecipe = JSON.parse(cleanJson);
+
+        output.innerText = `🍳 ${currentGeneratedRecipe.name}\n\n📝 Anleitung:\n${currentGeneratedRecipe.instructions}\n\n📊 Nährwerte: ${currentGeneratedRecipe.calories} kcal | P: ${currentGeneratedRecipe.protein}g | K: ${currentGeneratedRecipe.carbs}g | F: ${currentGeneratedRecipe.fat}g`;
+        addBtn.style.display = 'block';
+      } catch (err) {
+        output.innerText = "Fehler beim Verarbeiten des Rezepts:\n" + responseText;
+      }
+    }
+
+    function addRecipeToMeals() {
+      if (!currentGeneratedRecipe) return;
+
+      allData[TODAY_KEY].push({
+        id: Date.now(),
+        name: `🍳 ${currentGeneratedRecipe.name}`,
+        calories: Number(currentGeneratedRecipe.calories) || 0,
+        protein: Number(currentGeneratedRecipe.protein) || 0,
+        carbs: Number(currentGeneratedRecipe.carbs) || 0,
+        fat: Number(currentGeneratedRecipe.fat) || 0
+      });
+
+      persistData();
+      alert(`"${currentGeneratedRecipe.name}" wurde zu den heutigen Mahlzeiten hinzugefügt!`);
+      document.getElementById('addRecipeBtn').style.display = 'none';
     }
   </script>
 </body>
