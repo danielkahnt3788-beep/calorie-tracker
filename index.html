@@ -327,7 +327,7 @@
       }
     }
 
-    // KORRIGIERTE INTERACTIONS API INTEGRATION ('image' STATT 'media')
+   // GEMINI API INTEGRATION (MIT ROBUSTER BILD-STRUKTUR)
 async function callGemini(contents) {
   const apiKey = localStorage.getItem("gemini_api_key");
   if (!apiKey) {
@@ -354,11 +354,13 @@ async function callGemini(contents) {
           });
         } else if (p.inlineData || p.inline_data) {
           const imgData = p.inlineData || p.inline_data;
-          const mime = imgData.mimeType || imgData.mime_type || "image/jpeg";
-          // Umstellung von 'media' auf 'image' mit Data-URL Format
+          // Explizites 'image'-Objekt für die Interactions API
           inputSteps.push({
             type: "image",
-            image_url: `data:${mime};base64,${imgData.data}`
+            image: {
+              bytes: imgData.data,
+              mime_type: imgData.mimeType || imgData.mime_type || "image/jpeg"
+            }
           });
         }
       });
@@ -403,6 +405,7 @@ async function callGemini(contents) {
     return null;
   }
 }
+
 
     // BILD-ANALYSE FUNKTION
     async function analyzeMealImage() {
