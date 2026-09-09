@@ -29,8 +29,8 @@
     body { background-color: var(--bg); color: var(--text); padding-bottom: 80px; transition: background-color .2s, color .2s; }
 
     header { background: var(--primary); color: white; padding: 1rem; text-align: center; position: sticky; top: 0; z-index: 10; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-    nav { display: flex; justify-content: center; gap: 10px; background: var(--card-bg); padding: 0.5rem; border-bottom: 1px solid var(--border); }
-    nav button { flex: 1; max-width: 200px; padding: 0.6rem; border: none; background: none; font-weight: 600; color: var(--text-muted); cursor: pointer; border-radius: 8px; }
+    nav { display: flex; justify-content: center; gap: 4px; background: var(--card-bg); padding: 0.5rem; border-bottom: 1px solid var(--border); }
+    nav button { flex: 1; max-width: 150px; padding: 0.6rem 0.3rem; border: none; background: none; font-weight: 600; color: var(--text-muted); cursor: pointer; border-radius: 8px; font-size: 0.85rem; }
     nav button.active { background: #eff6ff; color: var(--primary); }
     body.dark nav button.active { background: #1e3a8a33; }
 
@@ -89,6 +89,21 @@
     #barcodeReaderRegion { width: 100%; max-width: 400px; background: #000; border-radius: 12px; overflow: hidden; }
     .scanner-close-btn { max-width: 220px; margin-top: 1rem; }
     .scanner-hint { color: #e2e8f0; font-size: 0.85rem; margin-top: 0.8rem; text-align: center; }
+
+    /* Rezept-Bibliothek */
+    .recipe-filters { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .recipe-filters > * { flex: 1; min-width: 120px; margin-top: 0.5rem; }
+    .recipe-card { border: 1px solid var(--border); border-radius: 8px; padding: 0.9rem; margin-top: 0.8rem; cursor: pointer; }
+    .recipe-card-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.6rem; }
+    .recipe-card-title { font-weight: 600; }
+    .recipe-card-macros { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem; }
+    .meal-badge { display: inline-block; font-size: 0.7rem; font-weight: 600; padding: 0.2rem 0.5rem; border-radius: 999px; white-space: nowrap; background: #eff6ff; color: var(--primary); }
+    body.dark .meal-badge { background: #1e3a8a55; }
+    .recipe-card-instructions { font-size: 0.85rem; margin-top: 0.6rem; white-space: pre-line; display: none; }
+    .recipe-card.expanded .recipe-card-instructions { display: block; }
+    .recipe-card-actions { display: flex; gap: 0.5rem; margin-top: 0.6rem; }
+    .recipe-card-actions button { width: auto; flex: 1; margin-top: 0; padding: 0.5rem; font-size: 0.85rem; }
+    .recipe-delete-btn { background: #fee2e2; color: #ef4444; border: none; }
   </style>
 </head>
 <body>
@@ -101,6 +116,7 @@
   <nav>
     <button id="navDashboard" class="active" onclick="switchPage('dashboard')">Dashboard</button>
     <button id="navHistory" onclick="switchPage('history')">Historie</button>
+    <button id="navRecipes" onclick="switchPage('recipes')">Rezepte</button>
     <button id="navSettings" onclick="switchPage('settings')">Einstellungen</button>
   </nav>
 
@@ -148,9 +164,24 @@
       <!-- REZEPT GENERATOR -->
       <div class="card">
         <h2>👨‍🍳 KI Rezept-Generator</h2>
+        <label style="font-size: 0.85rem; color: var(--text-muted);">Mahlzeit:</label>
+        <select id="recipeMealType">
+          <option value="breakfast">🌅 Frühstück</option>
+          <option value="lunch">🍽️ Mittagessen</option>
+          <option value="dinner">🌙 Abendessen</option>
+          <option value="snack">🍎 Snack</option>
+        </select>
         <input type="text" id="recipeIngredients" placeholder="Zutaten eingeben (z.B. Eier, Tomaten, Reis)">
+        <div class="settings-row" style="margin-top: 0.6rem;">
+          <label style="font-size: 0.85rem;" for="allowExtraIngredients">Weitere übliche Zutaten dürfen ergänzt werden (z.B. Gewürze, Öl)</label>
+          <label class="switch">
+            <input type="checkbox" id="allowExtraIngredients" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
         <button class="btn-primary" onclick="generateRecipe()">Rezept aus Zutaten erstellen</button>
         <div id="recipeOutput" style="margin-top: 0.8rem; font-size: 0.9rem; white-space: pre-line;"></div>
+        <button id="saveRecipeOnlyBtn" class="btn-secondary" style="display:none; margin-top:0.5rem;" onclick="saveRecipeOnly()">Nur in Bibliothek speichern</button>
         <button id="addRecipeBtn" class="btn-primary" style="display:none; background:#10b981; margin-top:0.5rem;" onclick="addRecipeToMeals()">Rezept ins Tagebuch eintragen</button>
       </div>
 
@@ -174,6 +205,25 @@
       <div class="card">
         <h2>Tagebuch & Verlaufsdaten</h2>
         <ul id="historyList"></ul>
+      </div>
+    </div>
+
+    <!-- SEITE 2b: REZEPT-BIBLIOTHEK -->
+    <div id="pageRecipes" class="page">
+      <div class="card">
+        <h2>📖 Gespeicherte Rezepte</h2>
+        <input type="text" id="recipeSearchInput" placeholder="Rezept durchsuchen..." oninput="renderRecipeLibrary()">
+        <div class="recipe-filters">
+          <select id="recipeFilterMealType" onchange="renderRecipeLibrary()">
+            <option value="">Alle Mahlzeiten</option>
+            <option value="breakfast">🌅 Frühstück</option>
+            <option value="lunch">🍽️ Mittagessen</option>
+            <option value="dinner">🌙 Abendessen</option>
+            <option value="snack">🍎 Snack</option>
+          </select>
+          <input type="number" id="recipeFilterMaxCalories" placeholder="Max. kcal" min="0" oninput="renderRecipeLibrary()">
+        </div>
+        <ul id="recipeLibraryList" style="list-style:none; margin-top: 0.5rem;"></ul>
       </div>
     </div>
 
@@ -255,14 +305,17 @@
     };
 
     // Speichert Daten inkl. Zeitstempel, damit beim Laden der neuere
-    // Stand (lokal oder Cloud) erkannt werden kann.
+    // Stand (lokal oder Cloud) erkannt werden kann. Sichert zusätzlich
+    // die Rezept-Bibliothek mit, damit sie nicht nur lokal im Browser liegt.
     window.saveDataToCloud = async function(data) {
       if (!db) return;
       const statusEl = document.getElementById('syncStatus');
       try {
         statusEl.innerText = "⏳ Speichere in Cloud...";
+        const recipesData = JSON.parse(localStorage.getItem('saved_recipes')) || [];
         await setDoc(doc(db, "users_data", "default_user"), {
           calorie_data: data,
+          saved_recipes: recipesData,
           updatedAt: new Date().toISOString()
         });
         statusEl.innerText = "☁️ Synchronisiert (" + new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ")";
@@ -272,8 +325,9 @@
       }
     };
 
-    // Gibt {calorie_data, updatedAt} zurück, damit der Aufrufer mit dem
-    // lokalen Zeitstempel vergleichen kann, statt blind zu überschreiben.
+    // Gibt {calorie_data, saved_recipes, updatedAt} zurück, damit der
+    // Aufrufer mit dem lokalen Zeitstempel vergleichen kann, statt blind
+    // zu überschreiben.
     window.loadDataFromCloud = async function() {
       if (!db) return null;
       try {
@@ -281,7 +335,7 @@
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
           const d = docSnap.data();
-          return { calorie_data: d.calorie_data, updatedAt: d.updatedAt || null };
+          return { calorie_data: d.calorie_data, saved_recipes: d.saved_recipes || null, updatedAt: d.updatedAt || null };
         }
       } catch (e) {
         console.error("Fehler beim Cloud-Load:", e);
@@ -299,9 +353,19 @@
     const THEME_KEY = 'theme_mode';
     const CALORIE_LIMIT_KEY = 'calorie_limit';
     const DEFAULT_CALORIE_LIMIT = 2200;
+    const RECIPES_KEY = 'saved_recipes';
+
+    const MEAL_TYPES = {
+      breakfast: { label: 'Frühstück', icon: '🌅', share: 0.25 },
+      lunch:     { label: 'Mittagessen', icon: '🍽️', share: 0.35 },
+      dinner:    { label: 'Abendessen', icon: '🌙', share: 0.30 },
+      snack:     { label: 'Snack', icon: '🍎', share: 0.10 }
+    };
 
     let allData = JSON.parse(localStorage.getItem('user_calorie_data')) || {};
+    let savedRecipes = JSON.parse(localStorage.getItem(RECIPES_KEY)) || [];
     let currentGeneratedRecipe = null;
+    let currentRecipeSavedId = null;
     let html5QrCode = null;
 
     if (!allData[TODAY_KEY]) {
@@ -347,6 +411,11 @@
             if (!allData[TODAY_KEY]) allData[TODAY_KEY] = [];
             localStorage.setItem('user_calorie_data', JSON.stringify(allData));
             if (cloudTs) localStorage.setItem(LOCAL_TS_KEY, cloudTs);
+
+            if (cloudResult.saved_recipes) {
+              savedRecipes = cloudResult.saved_recipes;
+              localStorage.setItem(RECIPES_KEY, JSON.stringify(savedRecipes));
+            }
           }
         }
       }
@@ -373,6 +442,10 @@
         document.getElementById('pageHistory').classList.add('active');
         document.getElementById('navHistory').classList.add('active');
         renderHistory();
+      } else if (pageName === 'recipes') {
+        document.getElementById('pageRecipes').classList.add('active');
+        document.getElementById('navRecipes').classList.add('active');
+        renderRecipeLibrary();
       } else if (pageName === 'settings') {
         document.getElementById('pageSettings').classList.add('active');
         document.getElementById('navSettings').classList.add('active');
@@ -724,8 +797,11 @@ Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown:
 
     async function generateRecipe() {
       const ingredients = document.getElementById('recipeIngredients').value.trim();
+      const mealType = document.getElementById('recipeMealType').value;
+      const allowExtra = document.getElementById('allowExtraIngredients').checked;
       const output = document.getElementById('recipeOutput');
       const addBtn = document.getElementById('addRecipeBtn');
+      const saveOnlyBtn = document.getElementById('saveRecipeOnlyBtn');
 
       if (!ingredients) {
         alert("Bitte gib ein paar Zutaten ein.");
@@ -734,8 +810,39 @@ Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown:
 
       output.innerText = "👨‍🍳 Erstelle Rezept mit KI...";
       addBtn.style.display = 'none';
+      saveOnlyBtn.style.display = 'none';
+      currentGeneratedRecipe = null;
+      currentRecipeSavedId = null;
 
-      const prompt = `Erstelle ein kurzes Rezept aus folgenden Zutaten: ${ingredients}.
+      const mealInfo = MEAL_TYPES[mealType];
+      const limit = getCalorieLimit();
+      const consumedToday = dayTotals(TODAY_KEY).calories;
+      const remaining = limit - consumedToday;
+      // Richtwert je nach Mahlzeit (z.B. Mittagessen ~35% des Tageslimits),
+      // aber nie mehr, als tatsächlich noch an Kalorien übrig ist.
+      const mealShareTarget = Math.round(limit * mealInfo.share);
+      const targetCalories = remaining > 0 ? Math.min(mealShareTarget, remaining) : mealShareTarget;
+
+      const ingredientsInstruction = allowExtra
+        ? `Die genannten Zutaten sind nur ein Teil der benötigten Zutaten und müssen nicht vollständig sein. Du darfst weitere übliche Haushalts-/Grundzutaten ergänzen (z.B. Gewürze, Öl, Zwiebeln, Knoblauch, Mehl), wenn das Rezept dadurch sinnvoller oder vollständiger wird. Nenne alle zusätzlich benötigten Zutaten in der Anleitung.`
+        : `Nutze ausschließlich die genannten Zutaten (Wasser, Salz, Pfeffer und etwas Öl als Basis sind erlaubt).`;
+
+      // Wenn das Tageslimit bereits überschritten ist, bekommt die KI dazu
+      // eine explizite Ansage statt nur eine rechnerische Zielzahl.
+      const budgetContext = remaining <= 0
+        ? `Der Nutzer hat sein Tageslimit von ${limit} kcal bereits um ca. ${Math.abs(remaining)} kcal überschritten. Halte diese Mahlzeit deshalb möglichst kalorienarm und leicht, deutlich unter dem sonst üblichen Richtwert für "${mealInfo.label}" von ca. ${mealShareTarget} kcal.`
+        : `Tageslimit ${limit} kcal, heute bereits verzehrt ${consumedToday} kcal, verbleibend ca. ${remaining} kcal. Für eine Mahlzeit vom Typ "${mealInfo.label}" ist ein Richtwert von ca. ${targetCalories} kcal sinnvoll. Halte dich an diesen Richtwert und überschreite das verbleibende Tageslimit möglichst nicht deutlich.`;
+
+      const prompt = `Erstelle ein kurzes Rezept für die Mahlzeit "${mealInfo.label}" aus folgenden Zutaten: ${ingredients}.
+${ingredientsInstruction}
+
+Kalorien-Kontext: ${budgetContext}
+
+Achte zusätzlich auf blutzuckerstabile Ernährung:
+- Kombiniere Kohlenhydrate immer mit ausreichend Ballaststoffen, Eiweiß und/oder gesunden Fetten
+- Bevorzuge Vollkorn/komplexe Kohlenhydrate statt raffiniertem Zucker oder Weißmehl
+- Vermeide große Mengen isolierter, schnell resorbierbarer Kohlenhydrate
+
 Schätze die Nährwerte für eine Portion.
 Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown:
 {
@@ -757,35 +864,202 @@ Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown:
           throw new Error('Antwort enthält nicht die erwarteten Rezeptfelder.');
         }
 
-        currentGeneratedRecipe = recipe;
-
         const cals = Number(recipe.calories) || 0;
         const prot = Number(recipe.protein) || 0;
         const carb = Number(recipe.carbs) || 0;
         const fat = Number(recipe.fat) || 0;
 
-        output.innerText = `🍳 ${recipe.name}\n\n📝 Anleitung:\n${recipe.instructions}\n\n📊 Nährwerte: ${cals} kcal | P: ${prot}g | K: ${carb}g | F: ${fat}g`;
+        // Nur als Vorschau im Speicher halten – NICHT automatisch in der
+        // Bibliothek speichern. Erst ein expliziter Klick auf "Nur
+        // speichern" oder "ins Tagebuch eintragen" legt es tatsächlich ab,
+        // damit Testläufe die Bibliothek nicht zumüllen.
+        currentGeneratedRecipe = {
+          name: recipe.name,
+          instructions: recipe.instructions,
+          calories: cals,
+          protein: prot,
+          carbs: carb,
+          fat: fat,
+          mealType: mealType,
+          ingredientsUsed: ingredients
+        };
+        currentRecipeSavedId = null;
+
+        const overBudget = remaining > 0 && cals > remaining;
+        const budgetNote = overBudget ? `\n⚠️ Liegt über deinem verbleibenden Tageslimit (${remaining} kcal).` : '';
+
+        output.innerText = `🍳 ${recipe.name} (${mealInfo.icon} ${mealInfo.label})\n\n📝 Anleitung:\n${recipe.instructions}\n\n📊 Nährwerte: ${cals} kcal | P: ${prot}g | K: ${carb}g | F: ${fat}g${budgetNote}\n\n💡 Noch nicht gespeichert – wähle unten eine Aktion.`;
         addBtn.style.display = 'block';
+        saveOnlyBtn.style.display = 'block';
       } catch (err) {
         output.innerText = "Die KI-Antwort konnte nicht als Rezept gelesen werden. Versuche es mit anderen/weniger Zutaten erneut:\n\n" + responseText;
       }
     }
 
-    function addRecipeToMeals() {
-      if (!currentGeneratedRecipe) return;
+    // Speichert das aktuell angezeigte Rezept genau einmal in der
+    // Bibliothek (egal ob über den "Nur speichern"- oder den
+    // "ins Tagebuch"-Button ausgelöst) und verhindert Doppel-Einträge.
+    function ensureRecipeSaved() {
+      if (currentRecipeSavedId) return currentGeneratedRecipe;
+      const saved = saveRecipeToLibrary(currentGeneratedRecipe, currentGeneratedRecipe.mealType, currentGeneratedRecipe.ingredientsUsed);
+      currentRecipeSavedId = saved.id;
+      currentGeneratedRecipe = saved;
+      return saved;
+    }
 
+    function saveRecipeOnly() {
+      if (!currentGeneratedRecipe) return;
+      const saved = ensureRecipeSaved();
+      alert(`"${saved.name}" wurde in der Rezept-Bibliothek gespeichert!`);
+      document.getElementById('saveRecipeOnlyBtn').style.display = 'none';
+    }
+
+    // ===== REZEPT-BIBLIOTHEK =====
+    function getMealTypeLabel(key) {
+      const m = MEAL_TYPES[key];
+      return m ? `${m.icon} ${m.label}` : (key || '');
+    }
+
+    function saveRecipeToLibrary(recipe, mealType, ingredientsUsed) {
+      const entry = {
+        id: Date.now(),
+        name: recipe.name,
+        instructions: recipe.instructions,
+        calories: Number(recipe.calories) || 0,
+        protein: Number(recipe.protein) || 0,
+        carbs: Number(recipe.carbs) || 0,
+        fat: Number(recipe.fat) || 0,
+        mealType: mealType,
+        ingredientsUsed: ingredientsUsed || '',
+        createdAt: new Date().toISOString()
+      };
+      savedRecipes.unshift(entry);
+      persistRecipes();
+      return entry;
+    }
+
+    // Speichert die Bibliothek lokal und stößt (falls Firebase konfiguriert
+    // ist) auch einen Cloud-Sync an, damit Rezepte nicht nur im Browser
+    // liegen, sondern über "Firebase Cloud Einstellungen" mitgesichert sind.
+    function persistRecipes() {
+      localStorage.setItem(RECIPES_KEY, JSON.stringify(savedRecipes));
+      if (window.saveDataToCloud) {
+        window.saveDataToCloud(allData);
+      }
+    }
+
+    function deleteSavedRecipe(id) {
+      const recipe = savedRecipes.find(r => r.id === id);
+      const name = recipe ? recipe.name : 'dieses Rezept';
+      if (!confirm(`"${name}" wirklich aus der Bibliothek löschen?`)) return;
+
+      savedRecipes = savedRecipes.filter(r => r.id !== id);
+      persistRecipes();
+      renderRecipeLibrary();
+    }
+
+    function addSavedRecipeToMeals(recipe) {
       allData[TODAY_KEY].push({
         id: Date.now(),
-        name: `🍳 ${currentGeneratedRecipe.name}`,
-        calories: Number(currentGeneratedRecipe.calories) || 0,
-        protein: Number(currentGeneratedRecipe.protein) || 0,
-        carbs: Number(currentGeneratedRecipe.carbs) || 0,
-        fat: Number(currentGeneratedRecipe.fat) || 0
+        name: `${getMealTypeLabel(recipe.mealType)}: ${recipe.name}`,
+        calories: Number(recipe.calories) || 0,
+        protein: Number(recipe.protein) || 0,
+        carbs: Number(recipe.carbs) || 0,
+        fat: Number(recipe.fat) || 0
+      });
+      persistData();
+      alert(`"${recipe.name}" wurde zu den heutigen Mahlzeiten hinzugefügt!`);
+    }
+
+    function renderRecipeLibrary() {
+      const listEl = document.getElementById('recipeLibraryList');
+      if (!listEl) return;
+      listEl.innerHTML = '';
+
+      const searchTerm = (document.getElementById('recipeSearchInput').value || '').trim().toLowerCase();
+      const mealFilter = document.getElementById('recipeFilterMealType').value;
+      const maxCalFilter = document.getElementById('recipeFilterMaxCalories').value !== ''
+        ? Number(document.getElementById('recipeFilterMaxCalories').value)
+        : null;
+
+      const filtered = savedRecipes.filter(r => {
+        if (mealFilter && r.mealType !== mealFilter) return false;
+        if (maxCalFilter !== null && r.calories > maxCalFilter) return false;
+        if (searchTerm) {
+          // Durchsucht Name, ursprüngliche Zutaten UND die Zubereitung –
+          // so findet man ein Rezept auch über eine Zutat, die erst die
+          // KI selbst ergänzt hat.
+          const haystack = `${r.name} ${r.ingredientsUsed || ''} ${r.instructions || ''}`.toLowerCase();
+          if (!haystack.includes(searchTerm)) return false;
+        }
+        return true;
       });
 
-      persistData();
-      alert(`"${currentGeneratedRecipe.name}" wurde zu den heutigen Mahlzeiten hinzugefügt!`);
+      if (filtered.length === 0) {
+        listEl.appendChild(el('li', {
+          text: savedRecipes.length === 0
+            ? 'Noch keine Rezepte gespeichert. Generiere eines auf dem Dashboard!'
+            : 'Keine Rezepte gefunden.',
+          style: { color: 'var(--text-muted)', padding: '0.5rem 0', borderBottom: 'none' }
+        }));
+        return;
+      }
+
+      filtered.forEach(recipe => {
+        const li = document.createElement('li');
+        li.style.borderBottom = 'none';
+        li.style.padding = '0';
+
+        const card = el('div', { className: 'recipe-card' });
+
+        const header = el('div', { className: 'recipe-card-header' });
+        const titleWrap = el('div');
+        titleWrap.appendChild(el('div', { className: 'recipe-card-title', text: recipe.name }));
+        titleWrap.appendChild(el('div', {
+          className: 'recipe-card-macros',
+          text: `${recipe.calories} kcal | P: ${recipe.protein}g K: ${recipe.carbs}g F: ${recipe.fat}g`
+        }));
+        header.appendChild(titleWrap);
+        header.appendChild(el('span', { className: 'meal-badge', text: getMealTypeLabel(recipe.mealType) }));
+
+        const instructionsEl = el('div', { className: 'recipe-card-instructions', text: recipe.instructions });
+
+        card.appendChild(header);
+        card.appendChild(instructionsEl);
+
+        // Auf die Karte tippen klappt die Anleitung auf/zu; Klicks auf die
+        // Buttons darin sollen das nicht auslösen.
+        card.addEventListener('click', (e) => {
+          if (e.target.tagName === 'BUTTON') return;
+          card.classList.toggle('expanded');
+        });
+
+        const actions = el('div', { className: 'recipe-card-actions' });
+        const addToMealsBtn = el('button', {
+          text: 'Ins Tagebuch',
+          className: 'btn-primary',
+          onclick: () => addSavedRecipeToMeals(recipe)
+        });
+        const delBtn = el('button', {
+          text: '🗑️',
+          className: 'recipe-delete-btn',
+          onclick: () => deleteSavedRecipe(recipe.id)
+        });
+        actions.appendChild(addToMealsBtn);
+        actions.appendChild(delBtn);
+        card.appendChild(actions);
+
+        li.appendChild(card);
+        listEl.appendChild(li);
+      });
+    }
+
+    function addRecipeToMeals() {
+      if (!currentGeneratedRecipe) return;
+      const saved = ensureRecipeSaved();
+      addSavedRecipeToMeals(saved);
       document.getElementById('addRecipeBtn').style.display = 'none';
+      document.getElementById('saveRecipeOnlyBtn').style.display = 'none';
     }
 
     // ===== PRODUKTSUCHE / LEBENSMITTELDATENBANK (Open Food Facts) =====
@@ -871,7 +1145,9 @@ Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown:
       }
 
       resultsEl.appendChild(el('div', {
-        text: `Top ${withNutriments.length} Treffer – bitte das passende Produkt auswählen:`,
+        text: withNutriments.length === 1
+          ? 'Ein passendes Produkt gefunden:'
+          : `Top ${withNutriments.length} Treffer – bitte das passende Produkt auswählen:`,
         style: { fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.5rem' }
       }));
 
