@@ -1,11 +1,11 @@
-const CACHE_NAME = 'kalorien-tracker-v1';
+const CACHE_NAME = 'kalorien-tracker-v2';
 const APP_SHELL = [
   './',
   './index.html',
   './manifest.json'
 ];
 
-// App-Shell beim Installieren cachen
+// App-Shell beim Installieren cachen (als Offline-Fallback)
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL))
@@ -13,7 +13,7 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
-// Alte Caches beim Aktivieren entfernen
+// Alte Caches beim Aktivieren entfernen (z.B. v1 -> v2)
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
@@ -23,19 +23,23 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// Cache-first für die App-Shell, Netzwerk für alles andere (z.B. Gemini/Firebase-Aufrufe
-// sollen NICHT gecacht werden, da es sich um dynamische API-Antworten handelt)
+// Network-first für die App-Shell (HTML/Manifest): immer die aktuelle
+// Version vom Server holen, Cache nur als Offline-Fallback verwenden.
+// Externe APIs (Gemini, Firebase, Open Food Facts) werden nie gecacht.
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Nur eigene Origin-Requests cachen, externe APIs immer live abrufen
   if (url.origin !== self.location.origin) {
     return;
   }
 
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      return cached || fetch(event.request).catch(() => cached);
-    })
+    fetch(event.request)
+      .then((networkResponse) => {
+        const responseClone = networkResponse.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseClone));
+        return networkResponse;
+      })
+      .catch(() => caches.match(event.request))
   );
 });
