@@ -134,7 +134,6 @@
 
     let db = null;
 
-    // Firebase Initialisieren
     window.initFirebase = function() {
       const configStr = localStorage.getItem('firebase_config');
       const statusEl = document.getElementById('syncStatus');
@@ -155,7 +154,6 @@
       }
     };
 
-    // Daten in Firebase Firestore Cloud sichern
     window.saveDataToCloud = async function(data) {
       if (!db) return;
       const statusEl = document.getElementById('syncStatus');
@@ -172,7 +170,6 @@
       }
     };
 
-    // Daten aus Firebase Firestore laden
     window.loadDataFromCloud = async function() {
       if (!db) return null;
       try {
@@ -201,7 +198,6 @@
 
     document.getElementById('currentDate').innerText = TODAY_KEY;
 
-    // App Start-Prozess
     window.addEventListener('DOMContentLoaded', async () => {
       if(localStorage.getItem('gemini_api_key')) {
         document.getElementById('geminiKeyInput').value = localStorage.getItem('gemini_api_key');
@@ -222,7 +218,6 @@
       updateDashboard();
     });
 
-    // Navigation
     function switchPage(pageName) {
       document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
       document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
@@ -240,7 +235,6 @@
       }
     }
 
-    // Speichern & Synchronisieren
     function persistData() {
       localStorage.setItem('user_calorie_data', JSON.stringify(allData));
       if (window.saveDataToCloud) {
@@ -249,7 +243,6 @@
       updateDashboard();
     }
 
-    // Dashboard UI Aktualisieren
     function updateDashboard() {
       const todayMeals = allData[TODAY_KEY] || [];
       let totalCals = 0, totalP = 0, totalC = 0, totalF = 0;
@@ -285,7 +278,6 @@
       persistData();
     }
 
-    // Historie Ansicht Rendern
     function renderHistory() {
       const historyListEl = document.getElementById('historyList');
       historyListEl.innerHTML = '';
@@ -308,7 +300,6 @@
       });
     }
 
-    // API Key Verwaltung
     function saveGeminiKey() {
       const key = document.getElementById('geminiKeyInput').value.trim();
       localStorage.setItem('gemini_api_key', key);
@@ -327,85 +318,66 @@
       }
     }
 
-   // GEMINI API INTEGRATION (MIT ROBUSTER BILD-STRUKTUR)
-async function callGemini(contents) {
-  const apiKey = localStorage.getItem("gemini_api_key");
-  if (!apiKey) {
-    alert("Bitte gib zuerst einen Gemini API Key in den Einstellungen ein!");
-    return null;
-  }
+    // VOLLSTÄNDIG KORRIGIERTE INTERACTIONS API LOGIK
+    async function callGeminiInteractions(textPrompt, imageBase64, mimeType) {
+      const apiKey = localStorage.getItem("gemini_api_key");
+      if (!apiKey) {
+        alert("Bitte gib zuerst einen Gemini API Key in den Einstellungen ein!");
+        return null;
+      }
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/interactions?key=${apiKey}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/interactions?key=${apiKey}`;
 
-  let inputSteps = [];
-
-  contents.forEach(item => {
-    if (typeof item === 'string') {
-      inputSteps.push({
-        type: "text",
-        text: item
-      });
-    } else if (item.parts) {
-      item.parts.forEach(p => {
-        if (p.text) {
-          inputSteps.push({
-            type: "text",
-            text: p.text
-          });
-        } else if (p.inlineData || p.inline_data) {
-          const imgData = p.inlineData || p.inline_data;
-          // Explizites 'image'-Objekt für die Interactions API
-          inputSteps.push({
-            type: "image",
-            image: {
-              bytes: imgData.data,
-              mime_type: imgData.mimeType || imgData.mime_type || "image/jpeg"
-            }
-          });
+      const inputSteps = [
+        {
+          type: "text",
+          text: textPrompt
+        },
+        {
+          type: "image",
+          data: imageBase64,
+          mime_type: mimeType || "image/jpeg"
         }
-      });
+      ];
+
+      try {
+        const response = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "models/gemini-2.5-flash",
+            input: inputSteps
+          })
+        });
+
+        if (!response.ok) {
+          const errData = await response.json();
+          console.error("Interactions API Fehler:", errData);
+          alert(`API Fehler (${response.status}): ${errData.error?.message || 'Ungültige Anfrage'}`);
+          return null;
+        }
+
+        const data = await response.json();
+        
+        if (data.output && Array.isArray(data.output)) {
+          const textContent = data.output
+            .flatMap(o => o.content || [])
+            .filter(c => c.text)
+            .map(c => c.text)
+            .join("\n");
+          if (textContent) return textContent;
+        }
+        
+        if (typeof data.output === 'string') return data.output;
+
+        alert("Keine gültige Textantwort von der API erhalten.");
+        return null;
+      } catch (e) {
+        console.error("Netzwerkfehler bei Gemini API:", e);
+        alert("Netzwerkfehler bei der Kommunikation mit der Gemini API.");
+        return null;
+      }
     }
-  });
-
-  try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "models/gemini-2.5-flash",
-        input: inputSteps
-      })
-    });
-
-    if (!response.ok) {
-      const errData = await response.json();
-      console.error("Interactions API Fehler-Details:", errData);
-      alert(`API Fehler (${response.status}): ${errData.error?.message || 'Ungültige Anfrage'}`);
-      return null;
-    }
-
-    const data = await response.json();
-    
-    if (data.output && Array.isArray(data.output)) {
-      const textContent = data.output
-        .flatMap(o => o.content || [])
-        .filter(c => c.text)
-        .map(c => c.text)
-        .join("\n");
-      if (textContent) return textContent;
-    }
-    
-    if (typeof data.output === 'string') return data.output;
-
-    alert("Keine gültige Textantwort von der API erhalten.");
-    return null;
-  } catch (e) {
-    console.error("Netzwerkfehler bei Gemini API:", e);
-    alert("Netzwerkfehler bei der Kommunikation mit der Gemini API.");
-    return null;
-  }
-}
-
 
     // BILD-ANALYSE FUNKTION
     async function analyzeMealImage() {
@@ -422,6 +394,7 @@ async function callGemini(contents) {
       const reader = new FileReader();
       reader.onload = async function() {
         const base64Data = reader.result.split(',')[1];
+        const mimeType = fileInput.files[0].type;
         
         const prompt = `Analysiere dieses Essen. Schätze die Inhaltsstoffe, Kalorien und Makronährstoffe (Eiweiß, Kohlenhydrate, Fett).
 Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown:
@@ -434,15 +407,7 @@ Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown:
   "fat": 0
 }`;
 
-        const contents = [{
-          role: "user",
-          parts: [
-            { text: prompt },
-            { inlineData: { mimeType: fileInput.files[0].type, data: base64Data } }
-          ]
-        }];
-
-        const responseText = await callGemini(contents);
+        const responseText = await callGeminiInteractions(prompt, base64Data, mimeType);
         if (!responseText) return;
 
         try {
