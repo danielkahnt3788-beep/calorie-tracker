@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kalorien Tracker PWA</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#2563eb">
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    body { background-color: var(--bg); color: var(--text); padding-bottom: 80px; }
+
+    header { background: var(--primary); color: white; padding: 1rem; text-align: center; position: sticky; top: 0; z-index: 10; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    nav { display: flex; justify-content: center; gap: 10px; background: var(--card-bg); padding: 0.5rem; border-bottom: 1px solid var(--border); }
+    nav button { flex: 1; max-width: 200px; padding: 0.6rem; border: none; background: none; font-weight: 600; color: var(--text-muted); cursor: pointer; border-radius: 8px; }
+    nav button.active { background: #eff6ff; color: var(--primary); }
+
+    .container { max-width: 600px; margin: 1rem auto; padding: 0 1rem; }
+    .page { display: none; }
+    .page.active { display: block; }
+
+    .card { background: var(--card-bg); border-radius: 12px; padding: 1.2rem; margin-bottom: 1rem; border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    .card h2 { font-size: 1.1rem; margin-bottom: 0.8rem; color: var(--text); }
+
+    .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; text-align: center; margin-top: 0.8rem; }
+    .stat-box { background: #f1f5f9; padding: 0.6rem; border-radius: 8px; }
+    .stat-value { font-size: 1.1rem; font-weight: bold; }
+    .stat-label { font-size: 0.75rem; color: var(--text-muted); }
+
+    input, button, select, textarea { width: 100%; padding: 0.75rem; margin-top: 0.5rem; border-radius: 8px; border: 1px solid var(--border); font-size: 1rem; }
+    button.btn-primary { background: var(--primary); color: white; border: none; font-weight: 600; cursor: pointer; }
+    button.btn-primary:hover { background: var(--primary-hover); }
+
+    ul { list-style: none; }
+    li { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 0; border-bottom: 1px solid var(--border); }
+    li:last-child { border-bottom: none; }
+
+    .sync-status { font-size: 0.8rem; text-align: center; margin-top: 0.5rem; color: var(--text-muted); }
+
+    .meal-delete-btn { width:auto; padding: 0.3rem 0.6rem; margin:0; background:#fee2e2; color:#ef4444; border:none; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>🥗 KI Kalorien Tracker</h1>
+    <div id="syncStatus" class="sync-status">🔄 Daten werden initialisiert...</div>
+  </header>
+
+  <nav>
+    <button id="navDashboard" class="active" onclick="switchPage('dashboard')">Dashboard</button>
+    <button id="navHistory" onclick="switchPage('history')">Historie</button>
+    <button id="navSettings" onclick="switchPage('settings')">Einstellungen</button>
+  </nav>
+
+  <div class="container">
+
+    <!-- SEITE 1: DASHBOARD -->
+    <div id="pageDashboard" class="page active">
+      <div class="card">
+        <h2>Tagesübersicht (<span id="currentDate"></span>)</h2>
+        <div style="text-align: center; margin: 1rem 0;">
+          <span id="totalCalories" style="font-size: 2.5rem; font-weight: bold; color: var(--primary);">0</span>
+          <span style="font-size: 1.2rem; color: var(--text-muted);">/ 2000 kcal</span>
+        </div>
+        <div class="stat-grid">
+          <div class="stat-box">
+            <div id="totalProtein" class="stat-value" style="color: #ef4444;">0g</div>
+            <div class="stat-label">Eiweiß</div>
+          </div>
+          <div class="stat-box">
+            <div id="totalCarbs" class="stat-value" style="color: #eab308;">0g</div>
+            <div class="stat-label">Kohlenhydrate</div>
+          </div>
+          <div class="stat-box">
+            <div id="totalFat" class="stat-value" style="color: #10b981;">0g</div>
+            <div class="stat-label">Fett</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- FOTO ANALYSE -->
+      <div class="card">
+        <h2>📸 KI Foto-Analyse</h2>
+        <!-- Ohne capture-Attribut fragt das Gerät nach Kamera ODER Galerie -->
+        <input type="file" id="imageInput" accept="image/*">
+        <button class="btn-primary" onclick="analyzeMealImage()">Essen analysieren</button>
+        <div id="imageAnalysisOutput" style="margin-top: 0.8rem; font-size: 0.9rem; white-space: pre-line;"></div>
+      </div>
+
+      <!-- REZEPT GENERATOR -->
+      <div class="card">
+        <h2>👨‍🍳 KI Rezept-Generator</h2>
+        <input type="text" id="recipeIngredients" placeholder="Zutaten eingeben (z.B. Eier, Tomaten, Reis)">
+        <button class="btn-primary" onclick="generateRecipe()">Rezept aus Zutaten erstellen</button>
+        <div id="recipeOutput" style="margin-top: 0.8rem; font-size: 0.9rem; white-space: pre-line;"></div>
+        <button id="addRecipeBtn" class="btn-primary" style="display:none; background:#10b981; margin-top:0.5rem;" onclick="addRecipeToMeals()">Rezept ins Tagebuch eintragen</button>
+      </div>
+
+      <div class="card">
+        <h2>Erfasste Mahlzeiten heute</h2>
+        <ul id="mealList"></ul>
+      </div>
+    </div>
+
+    <!-- SEITE 2: HISTORIE -->
+    <div id="pageHistory" class="page">
+      <div class="card">
+        <h2>Tagebuch & Verlaufsdaten</h2>
+        <ul id="historyList"></ul>
+      </div>
+    </div>
+
+    <!-- SEITE 3: EINSTELLUNGEN & FIREBASE -->
+    <div id="pageSettings" class="page">
+      <div class="card">
+        <h2>Gemini API Einstellungen</h2>
+        <label style="font-size: 0.85rem; color: var(--text-muted);">API Key aus Google AI Studio:</label>
+        <input type="password" id="geminiKeyInput" placeholder="AIzaSy...">
+        <button class="btn-primary" onclick="saveGeminiKey()">Gemini Key Speichern</button>
+      </div>
+
+      <div class="card">
+        <h2>Firebase Cloud Einstellungen</h2>
+        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem;">Füge hier dein Firebase Configuration Object ein, um Daten automatisch online zu sichern.</p>
+        <textarea id="firebaseConfigInput" style="height: 120px; font-family: monospace; font-size: 0.8rem; padding: 0.5rem;" placeholder='{\n  "apiKey": "...",\n  "projectId": "..."\n}'></textarea>
+        <button class="btn-primary" onclick="saveFirebaseConfig()">Firebase Konfiguration Speichern</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- FIREBASE MODUL -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+    let db = null;
+
+    window.initFirebase = function() {
+      const configStr = localStorage.getItem('firebase_config');
+      const statusEl = document.getElementById('syncStatus');
+
+      if (!configStr) {
+        statusEl.innerText = "💾 Nur lokaler Speicher (Kein Firebase konfiguriert)";
+        return;
+      }
+
+      try {
+        const firebaseConfig = JSON.parse(configStr);
+        const app = initializeApp(firebaseConfig);
+        db = getFirestore(app);
+        statusEl.innerText = "☁️ Firebase Online-Speicher aktiv";
+      } catch (e) {
+        console.error("Firebase Fehler:", e);
+        statusEl.innerText = "⚠️ Firebase Konfigurationsfehler";
+      }
+    };
+
+    // Speichert Daten inkl. Zeitstempel, damit beim Laden der neuere
+    // Stand (lokal oder Cloud) erkannt werden kann.
+    window.saveDataToCloud = async function(data) {
+      if (!db) return;
+      const statusEl = document.getElementById('syncStatus');
+      try {
+        statusEl.innerText = "⏳ Speichere in Cloud...";
+        await setDoc(doc(db, "users_data", "default_user"), {
+          calorie_data: data,
+          updatedAt: new Date().toISOString()
+        });
+        statusEl.innerText = "☁️ Synchronisiert (" + new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ")";
+      } catch (e) {
+        console.error("Fehler beim Cloud-Save:", e);
+        statusEl.innerText = "❌ Fehler beim Cloud-Speichern";
+      }
+    };
+
+    // Gibt jetzt {calorie_data, updatedAt} zurück statt nur der Daten,
+    // damit der Aufrufer mit dem lokalen Zeitstempel vergleichen kann.
+    window.loadDataFromCloud = async function() {
+      if (!db) return null;
+      try {
+        const docRef = doc(db, "users_data", "default_user");
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          const d = docSnap.data();
+          return { calorie_data: d.calorie_data, updatedAt: d.updatedAt || null };
+        }
+      } catch (e) {
+        console.error("Fehler beim Cloud-Load:", e);
+      }
+      return null;
+    };
+
+    window.initFirebase();
+  </script>
+
+  <!-- HAUPT APP LOGIK -->
+  <script>
+    const TODAY_KEY = new Date().toISOString().split('T')[0];
+    const LOCAL_TS_KEY = 'user_calorie_data_updatedAt';
+
+    let allData = JSON.parse(localStorage.getItem('user_calorie_data')) || {};
+    let currentGeneratedRecipe = null;
+
+    if (!allData[TODAY_KEY]) {
+      allData[TODAY_KEY] = [];
+    }
+
+    document.getElementById('currentDate').innerText = TODAY_KEY;
+
+    // Kleines Hilfsmittel, um Texte sicher (ohne HTML-Interpretation) in
+    // Elemente einzufügen. Verhindert, dass z.B. eine KI-Antwort mit
+    // HTML/Skript-Inhalt im DOM ausgeführt wird.
+    function el(tag, opts = {}) {
+      const node = document.createElement(tag);
+      if (opts.text !== undefined) node.textContent = opts.text;
+      if (opts.className) node.className = opts.className;
+      if (opts.style) Object.assign(node.style, opts.style);
+      if (opts.onclick) node.onclick = opts.onclick;
+      return node;
+    }
+
+    window.addEventListener('DOMContentLoaded', async () => {
+      if(localStorage.getItem('gemini_api_key')) {
+        document.getElementById('geminiKeyInput').value = localStorage.getItem('gemini_api_key');
+      }
+      if(localStorage.getItem('firebase_config')) {
+        document.getElementById('firebaseConfigInput').value = localStorage.getItem('firebase_config');
+      }
+
+      if (window.loadDataFromCloud) {
+        const cloudResult = await window.loadDataFromCloud();
+        if (cloudResult && cloudResult.calorie_data) {
+          const localTs = localStorage.getItem(LOCAL_TS_KEY);
+          const cloudTs = cloudResult.updatedAt;
+          // Nur übernehmen, wenn die Cloud-Version tatsächlich neuer ist
+          // (oder lokal noch gar kein Zeitstempel existiert). So werden
+          // lokale/offline erfasste Einträge nicht überschrieben.
+          const cloudIsNewer = !localTs || (cloudTs && new Date(cloudTs) > new Date(localTs));
+          if (cloudIsNewer) {
+            allData = cloudResult.calorie_data;
+            if (!allData[TODAY_KEY]) allData[TODAY_KEY] = [];
+            localStorage.setItem('user_calorie_data', JSON.stringify(allData));
+            if (cloudTs) localStorage.setItem(LOCAL_TS_KEY, cloudTs);
+          }
+        }
+      }
+
+      updateDashboard();
+
+      // Service Worker registrieren, damit die App offline funktioniert
+      // und installierbar ist. sw.js muss im selben Verzeichnis liegen.
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js').catch(err => {
+          console.warn('Service Worker konnte nicht registriert werden:', err);
+        });
+      }
+    });
+
+    function switchPage(pageName) {
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+
+      if (pageName === 'dashboard') {
+        document.getElementById('pageDashboard').classList.add('active');
+        document.getElementById('navDashboard').classList.add('active');
+      } else if (pageName === 'history') {
+        document.getElementById('pageHistory').classList.add('active');
+        document.getElementById('navHistory').classList.add('active');
+        renderHistory();
+      } else if (pageName === 'settings') {
+        document.getElementById('pageSettings').classList.add('active');
+        document.getElementById('navSettings').classList.add('active');
+      }
+    }
+
+    function persistData() {
+      const ts = new Date().toISOString();
+      localStorage.setItem('user_calorie_data', JSON.stringify(allData));
+      localStorage.setItem(LOCAL_TS_KEY, ts);
+      if (window.saveDataToCloud) {
+        window.saveDataToCloud(allData);
+      }
+      updateDashboard();
+    }
+
+    function updateDashboard() {
+      const todayMeals = allData[TODAY_KEY] || [];
+      let totalCals = 0, totalP = 0, totalC = 0, totalF = 0;
+
+      const mealListEl = document.getElementById('mealList');
+      mealListEl.innerHTML = '';
+
+      todayMeals.forEach((item, index) => {
+        totalCals += item.calories;
+        totalP += item.protein;
+        totalC += item.carbs;
+        totalF += item.fat;
+
+        const li = document.createElement('li');
+
+        const infoDiv = el('div');
+        const strong = el('strong', { text: item.name });
+        const small = el('small', {
+          text: `${item.calories} kcal | P: ${item.protein}g K: ${item.carbs}g F: ${item.fat}g`,
+          style: { color: 'var(--text-muted)' }
+        });
+        infoDiv.appendChild(strong);
+        infoDiv.appendChild(document.createElement('br'));
+        infoDiv.appendChild(small);
+
+        const delBtn = el('button', {
+          text: '✕',
+          className: 'meal-delete-btn',
+          onclick: () => deleteMeal(index)
+        });
+
+        li.appendChild(infoDiv);
+        li.appendChild(delBtn);
+        mealListEl.appendChild(li);
+      });
+
+      document.getElementById('totalCalories').innerText = totalCals;
+      document.getElementById('totalProtein').innerText = totalP + 'g';
+      document.getElementById('totalCarbs').innerText = totalC + 'g';
+      document.getElementById('totalFat').innerText = totalF + 'g';
+    }
+
+    function deleteMeal(index) {
+      allData[TODAY_KEY].splice(index, 1);
+      persistData();
+    }
+
+    function renderHistory() {
+      const historyListEl = document.getElementById('historyList');
+      historyListEl.innerHTML = '';
+
+      const sortedDates = Object.keys(allData).sort().reverse();
+      sortedDates.forEach(date => {
+        const meals = allData[date];
+        if (meals.length === 0) return;
+
+        const dayCals = meals.reduce((sum, m) => sum + m.calories, 0);
+
+        const li = document.createElement('li');
+        const infoDiv = el('div');
+        infoDiv.appendChild(el('strong', { text: date }));
+        infoDiv.appendChild(document.createElement('br'));
+        infoDiv.appendChild(el('small', { text: `${meals.length} Mahlzeit(en)`, style: { color: 'var(--text-muted)' } }));
+
+        const span = el('span', { text: `${dayCals} kcal`, style: { fontWeight: 'bold', color: 'var(--primary)' } });
+
+        li.appendChild(infoDiv);
+        li.appendChild(span);
+        historyListEl.appendChild(li);
+      });
+    }
+
+    function saveGeminiKey() {
+      const key = document.getElementById('geminiKeyInput').value.trim();
+      localStorage.setItem('gemini_api_key', key);
+      alert('Gemini API Key gespeichert!');
+    }
+
+    function saveFirebaseConfig() {
+      const configStr = document.getElementById('firebaseConfigInput').value.trim();
+      try {
+        JSON.parse(configStr);
+        localStorage.setItem('firebase_config', configStr);
+        alert('Firebase Konfiguration gespeichert! Seite wird neu geladen.');
+        location.reload();
+      } catch (e) {
+        alert('Ungültiges JSON-Format in der Firebase Konfiguration!');
+      }
+    }
+
+    // GEMINI generateContent API-AUFRUF (TEXT UND OPTIONAL BILD)
+    // Korrigiert: nutzt den echten Endpunkt models/{model}:generateContent
+    // mit contents/parts statt der bisherigen, nicht existierenden
+    // "interactions"-Struktur.
+    async function callGeminiInteractions(textPrompt, imageBase64 = null, mimeType = null) {
+      const apiKey = localStorage.getItem("gemini_api_key");
+      if (!apiKey) {
+        alert("Bitte gib zuerst einen Gemini API Key in den Einstellungen ein!");
+        return null;
+      }
+
+      const model = "gemini-3.8-flash";
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+      const parts = [{ text: textPrompt }];
+      if (imageBase64) {
+        parts.push({
+          inlineData: {
+            mimeType: mimeType || "image/jpeg",
+            data: imageBase64
+          }
+        });
+      }
+
+      try {
+        const response = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts }]
+          })
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          alert(`API Fehler (${response.status}): ${errData.error?.message || 'Ungültige Anfrage'}`);
+          return null;
+        }
+
+        const data = await response.json();
+
+        const textContent = data.candidates
+          ?.flatMap(c => c.content?.parts || [])
+          ?.filter(p => p.text)
+          ?.map(p => p.text)
+          ?.join("\n");
+
+        if (textContent) return textContent;
+
+        alert("Keine gültige Textantwort von der API erhalten.");
+        return null;
+      } catch (e) {
+        alert("Netzwerkfehler bei der Kommunikation mit der Gemini API.");
+        return null;
+      }
+    }
+
+    // BILD-ANALYSE FUNKTION
+    async function analyzeMealImage() {
+      const fileInput = document.getElementById('imageInput');
+      const output = document.getElementById('imageAnalysisOutput');
+
+      if (!fileInput.files[0]) {
+        alert("Bitte wähle zuerst ein Bild aus.");
+        return;
+      }
+
+      output.innerText = "🔍 Analysiere Bild mit KI...";
+
+      const reader = new FileReader();
+      reader.onload = async function() {
+        const base64Data = reader.result.split(',')[1];
+        const mimeType = fileInput.files[0].type;
+
+        const prompt = `Analysiere dieses Essen. Schätze die Inhaltsstoffe, Kalorien und Makronährstoffe (Eiweiß, Kohlenhydrate, Fett).
+Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown:
+{
+  "name": "Name des Gerichts",
+  "feedback": "Erklärung zur Schätzung",
+  "calories": 0,
+  "protein": 0,
+  "carbs": 0,
+  "fat": 0
+}`;
+
+        const responseText = await callGeminiInteractions(prompt, base64Data, mimeType);
+        if (!responseText) return;
+
+        try {
+          const cleanJson = responseText.replace(/```json|```/g, '').trim();
+          const result = JSON.parse(cleanJson);
+
+          allData[TODAY_KEY].push({
+            id: Date.now(),
+            name: `📸 ${result.name}`,
+            calories: Number(result.calories) || 0,
+            protein: Number(result.protein) || 0,
+            carbs: Number(result.carbs) || 0,
+            fat: Number(result.fat) || 0
+          });
+
+          persistData();
+          output.innerText = `✅ Erfasst: ${result.name}\n${result.calories} kcal | P: ${result.protein}g | K: ${result.carbs}g | F: ${result.fat}g`;
+        } catch (err) {
+          output.innerText = "Antwort erhalten, aber JSON konnte nicht gelesen werden:\n" + responseText;
+        }
+      };
+      reader.readAsDataURL(fileInput.files[0]);
+    }
+
+    // REZEPT GENERATION
+    async function generateRecipe() {
+      const ingredients = document.getElementById('recipeIngredients').value.trim();
+      const output = document.getElementById('recipeOutput');
+      const addBtn = document.getElementById('addRecipeBtn');
+
+      if (!ingredients) {
+        alert("Bitte gib ein paar Zutaten ein.");
+        return;
+      }
+
+      output.innerText = "👨‍🍳 Erstelle Rezept mit KI...";
+      addBtn.style.display = 'none';
+
+      const prompt = `Erstelle ein kurzes Rezept aus folgenden Zutaten: ${ingredients}.
+Schätze die Nährwerte für eine Portion.
+Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown:
+{
+  "name": "Rezeptname",
+  "instructions": "Kurze Anleitung zur Zubereitung",
+  "calories": 0,
+  "protein": 0,
+  "carbs": 0,
+  "fat": 0
+}`;
+
+      const responseText = await callGeminiInteractions(prompt);
+      if (!responseText) return;
+
+      try {
+        const cleanJson = responseText.replace(/```json|```/g, '').trim();
+        currentGeneratedRecipe = JSON.parse(cleanJson);
+
+        output.innerText = `🍳 ${currentGeneratedRecipe.name}\n\n📝 Anleitung:\n${currentGeneratedRecipe.instructions}\n\n📊 Nährwerte: ${currentGeneratedRecipe.calories} kcal | P: ${currentGeneratedRecipe.protein}g | K: ${currentGeneratedRecipe.carbs}g | F: ${currentGeneratedRecipe.fat}g`;
+        addBtn.style.display = 'block';
+      } catch (err) {
+        output.innerText = "Fehler beim Verarbeiten des Rezepts:\n" + responseText;
+      }
+    }
+
+    function addRecipeToMeals() {
+      if (!currentGeneratedRecipe) return;
+
+      allData[TODAY_KEY].push({
+        id: Date.now(),
+        name: `🍳 ${currentGeneratedRecipe.name}`,
+        calories: Number(currentGeneratedRecipe.calories) || 0,
+        protein: Number(currentGeneratedRecipe.protein) || 0,
+        carbs: Number(currentGeneratedRecipe.carbs) || 0,
+        fat: Number(currentGeneratedRecipe.fat) || 0
+      });
+
+      persistData();
+      alert(`"${currentGeneratedRecipe.name}" wurde zu den heutigen Mahlzeiten hinzugefügt!`);
+      document.getElementById('addRecipeBtn').style.display = 'none';
+    }
+  </script>
+</body>
+</html>
