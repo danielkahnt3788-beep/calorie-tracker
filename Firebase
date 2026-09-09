@@ -5,12 +5,12 @@ import { initializeApp } from "firebase/app";
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
-  apiKey: "AIzaSyD18wqVO8lo2WhxuXJQerjMTncsrR1EGjM",
-  authDomain: "kalorien-tracker-d7191.firebaseapp.com",
-  projectId: "kalorien-tracker-d7191",
-  storageBucket: "kalorien-tracker-d7191.firebasestorage.app",
-  messagingSenderId: "160954404631",
-  appId: "1:160954404631:web:c111442e7b35c88002b152"
+  "apiKey": "AIzaSyD18wqVO8lo2WhxuXJQerjMTncsrR1EGjM",
+  "authDomain": "kalorien-tracker-d7191.firebaseapp.com",
+  "projectId": "kalorien-tracker-d7191",
+  "storageBucket": "kalorien-tracker-d7191.firebasestorage.app",
+  "messagingSenderId": "160954404631",
+  "appId": "1:160954404631:web:c111442e7b35c88002b152"
 };
 
 // Initialize Firebase
