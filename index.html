@@ -684,8 +684,11 @@ Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown:
         if (!responseText) return;
 
         try {
-          const cleanJson = responseText.replace(/```json|```/g, '').trim();
-          const result = JSON.parse(cleanJson);
+          const result = extractJson(responseText);
+
+          if (!result.name) {
+            throw new Error('Antwort enthält nicht die erwarteten Felder.');
+          }
 
           allData[TODAY_KEY].push({
             id: Date.now(),
@@ -706,6 +709,19 @@ Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown:
     }
 
     // REZEPT GENERATION
+    // Extrahiert den JSON-Block aus einer KI-Antwort, auch wenn die KI
+    // (entgegen der Anweisung) zusätzlichen Text oder Markdown drumherum
+    // packt. Sucht das erste "{" bis zum letzten "}" in der Antwort.
+    function extractJson(text) {
+      const cleaned = text.replace(/```json|```/g, '').trim();
+      const start = cleaned.indexOf('{');
+      const end = cleaned.lastIndexOf('}');
+      if (start === -1 || end === -1 || end < start) {
+        throw new Error('Kein JSON-Objekt in der Antwort gefunden.');
+      }
+      return JSON.parse(cleaned.slice(start, end + 1));
+    }
+
     async function generateRecipe() {
       const ingredients = document.getElementById('recipeIngredients').value.trim();
       const output = document.getElementById('recipeOutput');
@@ -735,13 +751,23 @@ Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown:
       if (!responseText) return;
 
       try {
-        const cleanJson = responseText.replace(/```json|```/g, '').trim();
-        currentGeneratedRecipe = JSON.parse(cleanJson);
+        const recipe = extractJson(responseText);
 
-        output.innerText = `🍳 ${currentGeneratedRecipe.name}\n\n📝 Anleitung:\n${currentGeneratedRecipe.instructions}\n\n📊 Nährwerte: ${currentGeneratedRecipe.calories} kcal | P: ${currentGeneratedRecipe.protein}g | K: ${currentGeneratedRecipe.carbs}g | F: ${currentGeneratedRecipe.fat}g`;
+        if (!recipe.name || !recipe.instructions) {
+          throw new Error('Antwort enthält nicht die erwarteten Rezeptfelder.');
+        }
+
+        currentGeneratedRecipe = recipe;
+
+        const cals = Number(recipe.calories) || 0;
+        const prot = Number(recipe.protein) || 0;
+        const carb = Number(recipe.carbs) || 0;
+        const fat = Number(recipe.fat) || 0;
+
+        output.innerText = `🍳 ${recipe.name}\n\n📝 Anleitung:\n${recipe.instructions}\n\n📊 Nährwerte: ${cals} kcal | P: ${prot}g | K: ${carb}g | F: ${fat}g`;
         addBtn.style.display = 'block';
       } catch (err) {
-        output.innerText = "Fehler beim Verarbeiten des Rezepts:\n" + responseText;
+        output.innerText = "Die KI-Antwort konnte nicht als Rezept gelesen werden. Versuche es mit anderen/weniger Zutaten erneut:\n\n" + responseText;
       }
     }
 
