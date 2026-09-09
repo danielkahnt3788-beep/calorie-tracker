@@ -29,7 +29,13 @@
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
     body { background-color: var(--bg); color: var(--text); padding-bottom: 76px; transition: background-color .2s, color .2s; }
 
-    header { background: var(--primary); color: white; padding: 1rem; text-align: center; position: sticky; top: 0; z-index: 10; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    header { background: var(--primary); color: white; padding: 0.65rem 1rem; position: sticky; top: 0; z-index: 10; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .header-inner { position: relative; display: flex; align-items: center; justify-content: center; max-width: 600px; margin: 0 auto; }
+    header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: 0.2px; }
+    .sync-indicator { position: absolute; right: 0; top: 50%; transform: translateY(-50%); width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; background: rgba(255,255,255,0.25); transition: background-color .3s; cursor: default; }
+    .sync-indicator.ok { background: #10b981; }
+    .sync-indicator.error { background: #ef4444; }
+    .sync-indicator.syncing { background: #eab308; }
 
     /* Untere Icon-Navigation */
     nav.bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; display: flex; justify-content: space-around; background: var(--card-bg); border-top: 1px solid var(--border); padding: 0.3rem 0 calc(0.3rem + env(safe-area-inset-bottom, 0px)); z-index: 50; }
@@ -72,8 +78,6 @@
     li { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 0; border-bottom: 1px solid var(--border); }
     li:last-child { border-bottom: none; }
 
-    .sync-status { font-size: 0.8rem; text-align: center; margin-top: 0.5rem; color: var(--text-muted); }
-
     /* Wisch-zum-Löschen */
     li.swipe-item { display: block; padding: 0; overflow: hidden; position: relative; }
     .swipe-delete-bg { position: absolute; inset: 0; background: #ef4444; color: white; display: flex; align-items: center; justify-content: flex-end; padding-right: 1.2rem; font-weight: 600; font-size: 0.85rem; }
@@ -110,6 +114,10 @@
     .stepper-btn { width: 44px; flex-shrink: 0; margin-top: 0; padding: 0.5rem; font-size: 1.3rem; font-weight: 700; background: var(--bg); border: 1px solid var(--border); color: var(--text); cursor: pointer; }
     .stepper-input { text-align: center; margin-top: 0; flex: 1; }
 
+    /* Kamera/Galerie-Auswahl */
+    .image-source-row { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+    .image-source-row button { width: auto; flex: 1; margin-top: 0; }
+
     /* Produktsuche */
     .product-result { border: 1px solid var(--border); border-radius: 8px; padding: 0.8rem; margin-top: 0.8rem; }
     .product-result .product-title { font-weight: 600; }
@@ -130,6 +138,8 @@
     .recipe-card-macros { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem; }
     .meal-badge { display: inline-block; font-size: 0.7rem; font-weight: 600; padding: 0.2rem 0.5rem; border-radius: 999px; white-space: nowrap; background: #eff6ff; color: var(--primary); }
     body.dark .meal-badge { background: #1e3a8a55; }
+    .local-food-badge { display: inline-block; font-size: 0.7rem; font-weight: 600; padding: 0.2rem 0.5rem; border-radius: 999px; white-space: nowrap; background: #dcfce7; color: #059669; }
+    body.dark .local-food-badge { background: #05966955; color: #6ee7b7; }
     .recipe-card-instructions { font-size: 0.85rem; margin-top: 0.6rem; white-space: pre-line; display: none; }
     .recipe-card.expanded .recipe-card-instructions { display: block; }
     .recipe-card-actions { margin-top: 0.6rem; }
@@ -175,8 +185,10 @@
 <body>
 
   <header>
-    <h1>🥗 KI Kalorien Tracker</h1>
-    <div id="syncStatus" class="sync-status">🔄 Daten werden initialisiert...</div>
+    <div class="header-inner">
+      <h1>🥗 Kalorien Tracker</h1>
+      <div id="syncIndicator" class="sync-indicator local" title="Initialisiere...">☁️</div>
+    </div>
   </header>
 
   <div id="toastContainer"></div>
@@ -232,34 +244,17 @@
       <!-- FOTO ANALYSE -->
       <div class="card">
         <h2>📸 KI Foto-Analyse</h2>
-        <!-- Ohne capture-Attribut fragt das Gerät nach Kamera ODER Galerie -->
-        <input type="file" id="imageInput" accept="image/*">
-        <button class="btn-primary" onclick="analyzeMealImage()">Essen analysieren</button>
-        <div id="imageAnalysisOutput" style="margin-top: 0.8rem; font-size: 0.9rem; white-space: pre-line;"></div>
-      </div>
-
-      <!-- REZEPT GENERATOR -->
-      <div class="card">
-        <h2>👨‍🍳 KI Rezept-Generator</h2>
-        <label style="font-size: 0.85rem; color: var(--text-muted);">Mahlzeit:</label>
-        <select id="recipeMealType">
-          <option value="breakfast">🌅 Frühstück</option>
-          <option value="lunch">🍽️ Mittagessen</option>
-          <option value="dinner">🌙 Abendessen</option>
-          <option value="snack">🍎 Snack</option>
-        </select>
-        <input type="text" id="recipeIngredients" placeholder="Zutaten eingeben (z.B. Eier, Tomaten, Reis)">
-        <div class="settings-row" style="margin-top: 0.6rem;">
-          <label style="font-size: 0.85rem;" for="allowExtraIngredients">Weitere übliche Zutaten dürfen ergänzt werden (z.B. Gewürze, Öl)</label>
-          <label class="switch">
-            <input type="checkbox" id="allowExtraIngredients" checked>
-            <span class="slider"></span>
-          </label>
+        <div class="image-source-row">
+          <button class="btn-primary" onclick="document.getElementById('imageInputCamera').click()">📷 Kamera</button>
+          <button class="btn-secondary" onclick="document.getElementById('imageInputGallery').click()">🖼️ Galerie</button>
         </div>
-        <button class="btn-primary" onclick="generateRecipe()">Rezept aus Zutaten erstellen</button>
-        <div id="recipeOutput" style="margin-top: 0.8rem; font-size: 0.9rem; white-space: pre-line;"></div>
-        <button id="saveRecipeOnlyBtn" class="btn-secondary" style="display:none; margin-top:0.5rem;" onclick="saveRecipeOnly()">Nur in Bibliothek speichern</button>
-        <button id="addRecipeBtn" class="btn-primary" style="display:none; background:#10b981; margin-top:0.5rem;" onclick="addRecipeToMeals()">Rezept ins Tagebuch eintragen</button>
+        <!-- capture="environment" erzwingt auf unterstützten Geräten direkt die Kamera -->
+        <input type="file" id="imageInputCamera" accept="image/*" capture="environment" style="display:none" onchange="handleImageSelected(this)">
+        <!-- Kein capture-Attribut → öffnet die Bildergalerie/Dateiauswahl -->
+        <input type="file" id="imageInputGallery" accept="image/*" style="display:none" onchange="handleImageSelected(this)">
+        <div id="selectedImagePreview" style="margin-top: 0.6rem; font-size: 0.85rem; color: var(--text-muted);"></div>
+        <button class="btn-primary" style="margin-top: 0.6rem;" onclick="analyzeMealImage()">Essen analysieren</button>
+        <div id="imageAnalysisOutput" style="margin-top: 0.8rem; font-size: 0.9rem; white-space: pre-line;"></div>
       </div>
 
       <!-- PRODUKTSUCHE / BARCODE -->
@@ -287,6 +282,31 @@
 
     <!-- SEITE 2b: REZEPT-BIBLIOTHEK -->
     <div id="pageRecipes" class="page">
+
+      <!-- REZEPT GENERATOR -->
+      <div class="card">
+        <h2>👨‍🍳 KI Rezept-Generator</h2>
+        <label style="font-size: 0.85rem; color: var(--text-muted);">Mahlzeit:</label>
+        <select id="recipeMealType">
+          <option value="breakfast">🌅 Frühstück</option>
+          <option value="lunch">🍽️ Mittagessen</option>
+          <option value="dinner">🌙 Abendessen</option>
+          <option value="snack">🍎 Snack</option>
+        </select>
+        <input type="text" id="recipeIngredients" placeholder="Zutaten eingeben (z.B. Eier, Tomaten, Reis)">
+        <div class="settings-row" style="margin-top: 0.6rem;">
+          <label style="font-size: 0.85rem;" for="allowExtraIngredients">Weitere übliche Zutaten dürfen ergänzt werden (z.B. Gewürze, Öl)</label>
+          <label class="switch">
+            <input type="checkbox" id="allowExtraIngredients" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+        <button class="btn-primary" onclick="generateRecipe()">Rezept aus Zutaten erstellen</button>
+        <div id="recipeOutput" style="margin-top: 0.8rem; font-size: 0.9rem; white-space: pre-line;"></div>
+        <button id="saveRecipeOnlyBtn" class="btn-secondary" style="display:none; margin-top:0.5rem;" onclick="saveRecipeOnly()">Nur in Bibliothek speichern</button>
+        <button id="addRecipeBtn" class="btn-primary" style="display:none; background:#10b981; margin-top:0.5rem;" onclick="addRecipeToMeals()">Rezept ins Tagebuch eintragen</button>
+      </div>
+
       <div class="card">
         <h2>📖 Gespeicherte Rezepte</h2>
         <input type="text" id="recipeSearchInput" placeholder="Rezept durchsuchen..." oninput="renderRecipeLibrary()">
@@ -383,10 +403,9 @@
 
     window.initFirebase = function() {
       const configStr = localStorage.getItem('firebase_config');
-      const statusEl = document.getElementById('syncStatus');
 
       if (!configStr) {
-        statusEl.innerText = "💾 Nur lokaler Speicher (Kein Firebase konfiguriert)";
+        window.setSyncIndicator('local', '💾 Nur lokaler Speicher (kein Firebase konfiguriert)');
         return;
       }
 
@@ -394,10 +413,10 @@
         const firebaseConfig = JSON.parse(configStr);
         const app = initializeApp(firebaseConfig);
         db = getFirestore(app);
-        statusEl.innerText = "☁️ Firebase Online-Speicher aktiv";
+        window.setSyncIndicator('ok', '☁️ Firebase Online-Speicher aktiv');
       } catch (e) {
         console.error("Firebase Fehler:", e);
-        statusEl.innerText = "⚠️ Firebase Konfigurationsfehler";
+        window.setSyncIndicator('error', '⚠️ Firebase Konfigurationsfehler');
       }
     };
 
@@ -406,19 +425,18 @@
     // die Rezept-Bibliothek mit, damit sie nicht nur lokal im Browser liegt.
     window.saveDataToCloud = async function(data) {
       if (!db) return;
-      const statusEl = document.getElementById('syncStatus');
       try {
-        statusEl.innerText = "⏳ Speichere in Cloud...";
+        window.setSyncIndicator('syncing', '⏳ Speichere in Cloud...');
         const recipesData = JSON.parse(localStorage.getItem('saved_recipes')) || [];
         await setDoc(doc(db, "users_data", "default_user"), {
           calorie_data: data,
           saved_recipes: recipesData,
           updatedAt: new Date().toISOString()
         });
-        statusEl.innerText = "☁️ Synchronisiert (" + new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ")";
+        window.setSyncIndicator('ok', '☁️ Synchronisiert (' + new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ')');
       } catch (e) {
         console.error("Fehler beim Cloud-Save:", e);
-        statusEl.innerText = "❌ Fehler beim Cloud-Speichern";
+        window.setSyncIndicator('error', '❌ Fehler beim Cloud-Speichern');
       }
     };
 
@@ -482,6 +500,16 @@
       if (opts.onclick) node.onclick = opts.onclick;
       return node;
     }
+
+    // ===== SYNC-INDIKATOR (Header-Icon statt Textzeile) =====
+    // state: 'local' (grau, nur lokal), 'ok' (grün), 'error' (rot), 'syncing' (gelb)
+    function setSyncIndicator(state, tooltip) {
+      const indicator = document.getElementById('syncIndicator');
+      if (!indicator) return;
+      indicator.className = 'sync-indicator ' + state;
+      indicator.title = tooltip;
+    }
+    window.setSyncIndicator = setSyncIndicator;
 
     // ===== TOASTS (ersetzen alert() für Hinweise) =====
     function showToast(message, type = 'info', duration = 3000) {
@@ -992,12 +1020,29 @@
     }
 
     // BILD-ANALYSE FUNKTION
+    let selectedImageFile = null;
+
+    // Wird von beiden Datei-Inputs (Kamera & Galerie) aufgerufen, sobald
+    // ein Bild ausgewählt wurde.
+    function handleImageSelected(inputEl) {
+      const file = inputEl.files[0];
+      if (!file) return;
+      selectedImageFile = file;
+      document.getElementById('selectedImagePreview').textContent = `📎 Ausgewählt: ${file.name}`;
+    }
+
+    function resetImageSelection() {
+      selectedImageFile = null;
+      document.getElementById('selectedImagePreview').textContent = '';
+      document.getElementById('imageInputCamera').value = '';
+      document.getElementById('imageInputGallery').value = '';
+    }
+
     async function analyzeMealImage() {
-      const fileInput = document.getElementById('imageInput');
       const output = document.getElementById('imageAnalysisOutput');
 
-      if (!fileInput.files[0]) {
-        showToast("Bitte wähle zuerst ein Bild aus.", 'error');
+      if (!selectedImageFile) {
+        showToast("Bitte wähle zuerst ein Bild über Kamera oder Galerie aus.", 'error');
         return;
       }
 
@@ -1006,13 +1051,14 @@
       const reader = new FileReader();
       reader.onload = async function() {
         const base64Data = reader.result.split(',')[1];
-        const mimeType = fileInput.files[0].type;
+        const mimeType = selectedImageFile.type;
 
-        const prompt = `Analysiere dieses Essen. Schätze die Inhaltsstoffe, Kalorien und Makronährstoffe (Eiweiß, Kohlenhydrate, Fett).
+        const prompt = `Analysiere dieses Essen. Schätze zunächst das Gewicht der abgebildeten Portion in Gramm. Schätze anschließend die Kalorien und Makronährstoffe (Eiweiß, Kohlenhydrate, Fett) für GENAU diese geschätzte Portion (nicht pro 100g).
 Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown:
 {
   "name": "Name des Gerichts",
   "feedback": "Erklärung zur Schätzung",
+  "estimated_grams": 0,
   "calories": 0,
   "protein": 0,
   "carbs": 0,
@@ -1029,22 +1075,88 @@ Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown:
             throw new Error('Antwort enthält nicht die erwarteten Felder.');
           }
 
-          allData[TODAY_KEY].push({
-            id: Date.now(),
-            name: `📸 ${result.name}`,
-            calories: Number(result.calories) || 0,
-            protein: Number(result.protein) || 0,
-            carbs: Number(result.carbs) || 0,
-            fat: Number(result.fat) || 0
-          });
-
-          persistData();
-          output.innerText = `✅ Erfasst: ${result.name}\n${result.calories} kcal | P: ${result.protein}g | K: ${result.carbs}g | F: ${result.fat}g`;
+          // Nicht direkt übernehmen: erst Mengen-Vorschau zeigen, damit die
+          // Menge in 20g-Schritten korrigiert werden kann, bevor bestätigt wird.
+          renderMealAnalysisPreview(result, output);
         } catch (err) {
           output.innerText = "Antwort erhalten, aber JSON konnte nicht gelesen werden:\n" + responseText;
         }
       };
-      reader.readAsDataURL(fileInput.files[0]);
+      reader.readAsDataURL(selectedImageFile);
+    }
+
+    // Zeigt das KI-Analyseergebnis als Vorschau mit anpassbarer Menge
+    // (20g-Schritte). Nährwerte werden dabei live aus den vom Modell für
+    // die geschätzte Portion gelieferten Werten pro Gramm umgerechnet.
+    // Erst der Klick auf "So übernehmen" trägt den Eintrag ins Tagebuch ein.
+    function renderMealAnalysisPreview(result, container) {
+      const estimatedGrams = Number(result.estimated_grams) > 0 ? Number(result.estimated_grams) : 100;
+      const totalCals = Number(result.calories) || 0;
+      const totalProt = Number(result.protein) || 0;
+      const totalCarb = Number(result.carbs) || 0;
+      const totalFat = Number(result.fat) || 0;
+
+      const perGram = {
+        cal: totalCals / estimatedGrams,
+        prot: totalProt / estimatedGrams,
+        carb: totalCarb / estimatedGrams,
+        fat: totalFat / estimatedGrams
+      };
+
+      container.innerHTML = '';
+      const card = el('div', { className: 'product-result' });
+
+      card.appendChild(el('div', { className: 'product-title', text: `📸 ${result.name}` }));
+      if (result.feedback) {
+        card.appendChild(el('div', { text: result.feedback, style: { fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.2rem' } }));
+      }
+
+      const macroLine = el('div', { className: 'product-macros' });
+      card.appendChild(macroLine);
+
+      card.appendChild(el('label', {
+        text: `KI-Schätzung: ${estimatedGrams}g – bei Bedarf in 20g-Schritten anpassen:`,
+        style: { fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.6rem', display: 'block' }
+      }));
+
+      const { wrap: stepperWrap, input: gramsInput } = createGramStepper(estimatedGrams, 20);
+      card.appendChild(stepperWrap);
+
+      function currentValues() {
+        const grams = Math.max(1, Number(gramsInput.value) || 0);
+        const cals = Math.round(perGram.cal * grams);
+        const prot = Math.round(perGram.prot * grams);
+        const carb = Math.round(perGram.carb * grams);
+        const fat = Math.round(perGram.fat * grams);
+        macroLine.textContent = `${cals} kcal | P: ${prot}g K: ${carb}g F: ${fat}g (bei ${grams}g)`;
+        return { grams, cals, prot, carb, fat };
+      }
+      currentValues();
+      gramsInput.addEventListener('input', currentValues);
+
+      const confirmBtn = el('button', {
+        text: '✅ So ins Tagebuch übernehmen',
+        className: 'btn-primary',
+        style: { marginTop: '0.6rem' },
+        onclick: () => {
+          const final = currentValues();
+          allData[TODAY_KEY].push({
+            id: Date.now(),
+            name: `📸 ${result.name} (${final.grams}g)`,
+            calories: final.cals,
+            protein: final.prot,
+            carbs: final.carb,
+            fat: final.fat
+          });
+          persistData();
+          showToast(`"${result.name}" wurde zu den heutigen Mahlzeiten hinzugefügt!`, 'success');
+          container.innerHTML = '';
+          resetImageSelection();
+        }
+      });
+      card.appendChild(confirmBtn);
+
+      container.appendChild(card);
     }
 
     // REZEPT GENERATION
@@ -1347,6 +1459,64 @@ Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown:
     const OFF_FIELDS = "code,product_name,brands,nutriments,image_small_url";
     const MAX_FOOD_RESULTS = 5;
 
+    // Feste Liste gängiger, unverpackter Grundlebensmittel mit
+    // Standard-Nährwerten pro 100g. Open Food Facts deckt frisches
+    // Obst/Gemüse (ohne Barcode) oft nur lückenhaft ab – diese Liste
+    // sorgt dafür, dass z.B. "Radieschen" oder "Apfel" trotzdem
+    // zuverlässig gefunden werden. Werte sind allgemeine Richtwerte,
+    // keine exakten Angaben für eine bestimmte Sorte/Charge.
+    const LOCAL_FOOD_DB = [
+      { name: "Apfel", calories: 52, protein: 0.3, carbs: 14, fat: 0.2 },
+      { name: "Banane", calories: 89, protein: 1.1, carbs: 23, fat: 0.3 },
+      { name: "Birne", calories: 57, protein: 0.4, carbs: 15, fat: 0.1 },
+      { name: "Orange", calories: 47, protein: 0.9, carbs: 12, fat: 0.1 },
+      { name: "Erdbeeren", calories: 32, protein: 0.7, carbs: 8, fat: 0.3 },
+      { name: "Blaubeeren", calories: 57, protein: 0.7, carbs: 14, fat: 0.3 },
+      { name: "Weintrauben", calories: 69, protein: 0.6, carbs: 18, fat: 0.2 },
+      { name: "Wassermelone", calories: 30, protein: 0.6, carbs: 8, fat: 0.2 },
+      { name: "Radieschen", calories: 16, protein: 0.7, carbs: 2, fat: 0.1 },
+      { name: "Gurke", calories: 15, protein: 0.7, carbs: 3.6, fat: 0.1 },
+      { name: "Tomate", calories: 18, protein: 0.9, carbs: 3.9, fat: 0.2 },
+      { name: "Karotte", calories: 41, protein: 0.9, carbs: 10, fat: 0.2 },
+      { name: "Paprika", calories: 31, protein: 1.0, carbs: 6, fat: 0.3 },
+      { name: "Brokkoli", calories: 34, protein: 2.8, carbs: 7, fat: 0.4 },
+      { name: "Blumenkohl", calories: 25, protein: 1.9, carbs: 5, fat: 0.3 },
+      { name: "Zucchini", calories: 17, protein: 1.2, carbs: 3.1, fat: 0.3 },
+      { name: "Spinat", calories: 23, protein: 2.9, carbs: 3.6, fat: 0.4 },
+      { name: "Kartoffel", calories: 77, protein: 2.0, carbs: 17, fat: 0.1 },
+      { name: "Zwiebel", calories: 40, protein: 1.1, carbs: 9, fat: 0.1 },
+      { name: "Knoblauch", calories: 149, protein: 6.4, carbs: 33, fat: 0.5 },
+      { name: "Reis (gekocht)", calories: 130, protein: 2.7, carbs: 28, fat: 0.3 },
+      { name: "Nudeln (gekocht)", calories: 131, protein: 5.0, carbs: 25, fat: 1.1 },
+      { name: "Haferflocken", calories: 379, protein: 13.0, carbs: 60, fat: 7.0 },
+      { name: "Vollkornbrot", calories: 247, protein: 9.0, carbs: 41, fat: 3.3 },
+      { name: "Ei (gekocht)", calories: 155, protein: 13.0, carbs: 1.1, fat: 11.0 },
+      { name: "Hühnerbrust", calories: 120, protein: 23.0, carbs: 0, fat: 2.0 },
+      { name: "Magerquark", calories: 67, protein: 12.0, carbs: 4, fat: 0.2 },
+      { name: "Naturjoghurt", calories: 61, protein: 3.5, carbs: 4.7, fat: 3.3 },
+      { name: "Milch", calories: 64, protein: 3.3, carbs: 4.8, fat: 3.5 },
+      { name: "Linsen (gekocht)", calories: 116, protein: 9.0, carbs: 20, fat: 0.4 }
+    ];
+
+    // Wandelt einen Treffer aus LOCAL_FOOD_DB in die gleiche Struktur um,
+    // die renderFoodResults() auch von Open Food Facts erwartet.
+    function findLocalFoodMatches(query) {
+      const q = query.trim().toLowerCase();
+      if (!q) return [];
+      return LOCAL_FOOD_DB
+        .filter(f => f.name.toLowerCase().includes(q))
+        .map(f => ({
+          product_name: f.name,
+          isLocal: true,
+          nutriments: {
+            'energy-kcal_100g': f.calories,
+            'proteins_100g': f.protein,
+            'carbohydrates_100g': f.carbs,
+            'fat_100g': f.fat
+          }
+        }));
+    }
+
     async function fetchFoodSearchLegacy(query) {
       try {
         const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=${MAX_FOOD_RESULTS}`;
@@ -1376,18 +1546,25 @@ Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown:
       const resultsEl = document.getElementById('foodSearchResults');
 
       if (!query) {
-        showToast('Bitte einen Suchbegriff eingeben (z.B. "DM Hafermilch").', 'error');
+        showToast('Bitte einen Suchbegriff eingeben (z.B. "DM Hafermilch" oder "Radieschen").', 'error');
         return;
       }
 
       resultsEl.innerHTML = '<div class="loading-line"><span class="spinner"></span>Suche in der Lebensmitteldatenbank...</div>';
 
-      let result = await fetchFoodSearchLegacy(query);
-      if (!result.ok || result.products.length === 0) {
+      // Zuerst die feste Liste an Grundlebensmitteln (Obst, Gemüse, Basics)
+      // durchsuchen – die deckt unverpackte Ware zuverlässiger ab als OFF.
+      const localMatches = findLocalFoodMatches(query);
+
+      let offProducts = [];
+      const legacy = await fetchFoodSearchLegacy(query);
+      if (legacy.ok && legacy.products.length > 0) {
+        offProducts = legacy.products;
+      } else {
         const fallback = await fetchFoodSearchAlicious(query);
         if (fallback.products.length > 0) {
-          result = fallback;
-        } else if (!result.ok && !fallback.ok) {
+          offProducts = fallback.products;
+        } else if (!legacy.ok && !fallback.ok && localMatches.length === 0) {
           resultsEl.innerHTML = '';
           resultsEl.appendChild(el('div', {
             text: 'Die Lebensmitteldatenbank ist gerade nicht erreichbar. Bitte in ein paar Minuten erneut versuchen.',
@@ -1397,7 +1574,9 @@ Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown:
         }
       }
 
-      renderFoodResults(result.products);
+      // Lokale Treffer zuerst zeigen (zuverlässiger für frisches Obst/
+      // Gemüse), danach die Ergebnisse aus Open Food Facts.
+      renderFoodResults([...localMatches, ...offProducts]);
     }
 
     function renderFoodResults(products) {
@@ -1424,11 +1603,16 @@ Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown:
         const n = p.nutriments;
         const card = el('div', { className: 'product-result' });
 
-        const title = el('div', {
+        const titleRow = el('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' } });
+        titleRow.appendChild(el('div', {
           className: 'product-title',
           text: p.product_name ? p.product_name : 'Unbekanntes Produkt'
-        });
-        const subtitle = p.brands ? el('div', { text: p.brands, style: { fontSize: '0.8rem', color: 'var(--text-muted)' } }) : null;
+        }));
+        if (p.isLocal) {
+          titleRow.appendChild(el('span', { className: 'local-food-badge', text: '🌱 Basiswert' }));
+        }
+
+        const subtitle = (!p.isLocal && p.brands) ? el('div', { text: p.brands, style: { fontSize: '0.8rem', color: 'var(--text-muted)' } }) : null;
 
         const macros = el('div', {
           className: 'product-macros',
@@ -1443,7 +1627,7 @@ Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown:
           onclick: () => addFoodProductToMeals(p, weightInput)
         });
 
-        card.appendChild(title);
+        card.appendChild(titleRow);
         if (subtitle) card.appendChild(subtitle);
         card.appendChild(macros);
         card.appendChild(stepperWrap);
