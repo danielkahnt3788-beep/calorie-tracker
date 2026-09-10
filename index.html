@@ -71,6 +71,9 @@
     .calorie-ring-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
     .calorie-ring-value { font-size: 2.1rem; font-weight: bold; color: var(--primary); }
     .calorie-ring-label { font-size: 0.8rem; color: var(--text-muted); }
+    /* Der Ring ist jetzt ein <button> - generische button-Styles zurücksetzen */
+    button.calorie-ring-wrap { padding: 0; margin: 0; border: none; background: none; font: inherit; color: inherit; }
+    button.calorie-ring-wrap:focus-visible { outline: 3px solid var(--primary); outline-offset: 4px; border-radius: 50%; }
 
     input, button, select, textarea { width: 100%; padding: 0.75rem; margin-top: 0.5rem; border-radius: 8px; border: 1px solid var(--border); font-size: 1rem; background: var(--card-bg); color: var(--text); }
     button.btn-primary { background: var(--primary); color: white; border: none; font-weight: 600; cursor: pointer; }
@@ -100,7 +103,10 @@
     .week-macro-legend { font-size: 0.7rem; color: var(--text-muted); margin-bottom: 0.3rem; }
 
     /* Serie (in die Tagesübersicht integriert), wächst mit der Länge der Serie */
-    .streak-inline { display: flex; flex-direction: column; align-items: center; justify-content: center; flex-shrink: 0; min-width: 64px; text-align: center; }
+    .streak-inline { display: flex; flex-direction: column; align-items: center; justify-content: center; flex-shrink: 0; width: 64px; text-align: center; }
+    /* KI-Bewertungs-Button neben dem Ring: gleiche Breite wie die Serie
+       links, damit der Ring optisch mittig bleibt. */
+    .ai-eval-btn { width: 64px; flex-shrink: 0; margin-top: 0; padding: 0.5rem 0.3rem; font-size: 0.7rem; line-height: 1.2; }
     .streak-icon { font-size: 1.4rem; transition: font-size .3s ease; }
     .streak-value { font-weight: bold; margin-top: 0.15rem; transition: font-size .3s ease; font-size: 0.85rem; }
 
@@ -154,7 +160,7 @@
     .recipe-card-actions button { margin-top: 0; padding: 0.5rem; font-size: 0.85rem; }
 
     /* Historie: aufklappbare Tageskarten mit Mahlzeiten-Details */
-    .history-card { cursor: pointer; width: 100%; }
+    .history-card-toggle { cursor: pointer; width: 100%; text-align: left; background: none; border: none; padding: 0; }
     .history-card-summary { display: flex; justify-content: space-between; align-items: center; }
     .history-expand-hint { font-size: 0.7rem; color: var(--text-muted); }
     .history-card-details { display: none; margin-top: 0.7rem; padding-top: 0.7rem; border-top: 1px solid var(--border); }
@@ -179,9 +185,9 @@
     .toast.success { border-left-color: #10b981; }
     .toast.error { border-left-color: #ef4444; }
 
-    /* Eigener Bestätigungs-Dialog */
-    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 250; padding: 1rem; }
-    .modal-box { background: var(--card-bg); border-radius: 12px; padding: 1.2rem; max-width: 340px; width: 100%; }
+    /* Eigener Bestätigungs-Dialog (natives <dialog>) */
+    dialog.modal-box { background: var(--card-bg); border-radius: 12px; padding: 1.2rem; max-width: 340px; width: 100%; border: none; margin: auto; color: var(--text); }
+    dialog.modal-box::backdrop { background: rgba(0,0,0,0.5); }
     .modal-box p { margin-bottom: 1rem; font-size: 0.95rem; color: var(--text); }
     .modal-actions { display: flex; gap: 0.6rem; }
     .modal-actions button { flex: 1; margin-top: 0; }
@@ -195,11 +201,11 @@
   <header>
     <div class="header-inner">
       <h1>🥗 Kalorien Tracker</h1>
-      <div id="syncIndicator" class="sync-indicator local" title="Initialisiere...">☁️</div>
+      <div id="syncIndicator" class="sync-indicator local" role="status" aria-live="polite" title="Initialisiere..." aria-label="Initialisiere...">☁️</div>
     </div>
   </header>
 
-  <div id="toastContainer"></div>
+  <div id="toastContainer" aria-live="polite" aria-atomic="true"></div>
 
   <div class="container">
 
@@ -209,11 +215,11 @@
         <h2>Tagesübersicht (<span id="currentDate"></span>)</h2>
         <div class="dashboard-top-row">
           <div class="streak-inline" title="Tage in Folge im Kalorienlimit">
-            <div id="streakIcon" class="streak-icon">🔥</div>
+            <div id="streakIcon" class="streak-icon" aria-hidden="true">🔥</div>
             <div id="streakValue" class="streak-value">0 Tage</div>
           </div>
-          <div class="calorie-ring-wrap" onclick="scrollToMealList()" title="Zu den Mahlzeiten springen">
-            <svg viewBox="0 0 170 170">
+          <button type="button" class="calorie-ring-wrap" data-action="scrollToMealList" aria-label="Zu den heutigen Mahlzeiten springen">
+            <svg viewBox="0 0 170 170" aria-hidden="true">
               <circle class="calorie-ring-track" cx="85" cy="85" r="72"></circle>
               <circle id="calorieRingProgress" class="calorie-ring-progress" cx="85" cy="85" r="72"></circle>
             </svg>
@@ -221,7 +227,8 @@
               <span id="totalCalories" class="calorie-ring-value">0</span>
               <span class="calorie-ring-label">/ <span id="calorieLimitDisplay">2200</span> kcal</span>
             </div>
-          </div>
+          </button>
+          <button type="button" class="btn-secondary ai-eval-btn" data-action="evaluateDayWithAI">🤖 KI-Check</button>
         </div>
         <div class="stat-grid">
           <div class="stat-box">
@@ -240,33 +247,33 @@
             <div class="macro-bar-track"><div id="fatBar" class="macro-bar-fill" style="background:#10b981; width:0%;"></div></div>
           </div>
         </div>
-        <button class="btn-secondary" style="margin-top: 1rem;" onclick="evaluateDayWithAI()">🤖 KI-Bewertung des Tages</button>
-        <div id="dayEvaluationOutput" style="margin-top: 0.6rem; font-size: 0.9rem; white-space: pre-line;"></div>
+        <div id="dayEvaluationOutput" style="margin-top: 1rem; font-size: 0.9rem; white-space: pre-line;" aria-live="polite"></div>
       </div>
 
       <!-- FOTO ANALYSE -->
       <div class="card">
         <h2>📸 KI Foto-Analyse</h2>
         <div class="image-source-row">
-          <button class="btn-primary" onclick="document.getElementById('imageInputCamera').click()">📷 Kamera</button>
-          <button class="btn-secondary" onclick="document.getElementById('imageInputGallery').click()">🖼️ Galerie</button>
+          <button type="button" class="btn-primary" data-action="openFileInput" data-arg="imageInputCamera">📷 Kamera</button>
+          <button type="button" class="btn-secondary" data-action="openFileInput" data-arg="imageInputGallery">🖼️ Galerie</button>
         </div>
         <!-- capture="environment" erzwingt auf unterstützten Geräten direkt die Kamera -->
-        <input type="file" id="imageInputCamera" accept="image/*" capture="environment" style="display:none" onchange="handleImageSelected(this)">
+        <input type="file" id="imageInputCamera" accept="image/*" capture="environment" style="display:none">
         <!-- Kein capture-Attribut → öffnet die Bildergalerie/Dateiauswahl -->
-        <input type="file" id="imageInputGallery" accept="image/*" style="display:none" onchange="handleImageSelected(this)">
+        <input type="file" id="imageInputGallery" accept="image/*" style="display:none">
         <div id="selectedImagePreview" style="margin-top: 0.6rem; font-size: 0.85rem; color: var(--text-muted);"></div>
-        <button class="btn-primary" style="margin-top: 0.6rem;" onclick="analyzeMealImage()">Essen analysieren</button>
-        <div id="imageAnalysisOutput" style="margin-top: 0.8rem; font-size: 0.9rem; white-space: pre-line;"></div>
+        <button type="button" class="btn-primary" style="margin-top: 0.6rem;" data-action="analyzeMealImage">Essen analysieren</button>
+        <div id="imageAnalysisOutput" style="margin-top: 0.8rem; font-size: 0.9rem; white-space: pre-line;" aria-live="polite"></div>
       </div>
 
       <!-- PRODUKTSUCHE / BARCODE -->
       <div class="card">
         <h2>🛒 Produktsuche & Barcode-Scanner</h2>
+        <label for="foodSearchInput" style="position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap;">Lebensmittel suchen</label>
         <input type="text" id="foodSearchInput" placeholder="z.B. DM Hafermilch">
-        <button class="btn-primary" onclick="searchFoodDatabase()">Produkt suchen</button>
-        <button class="btn-secondary" style="margin-top:0.5rem;" onclick="startBarcodeScanner()">📷 Barcode scannen</button>
-        <div id="foodSearchResults"></div>
+        <button type="button" class="btn-primary" data-action="searchFoodDatabase">Produkt suchen</button>
+        <button type="button" class="btn-secondary" style="margin-top:0.5rem;" data-action="startBarcodeScanner">📷 Barcode scannen</button>
+        <div id="foodSearchResults" aria-live="polite"></div>
       </div>
 
       <div class="card">
@@ -282,7 +289,7 @@
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 0.5rem;">
           <h2 style="margin-bottom: 0;">📅 Wochenübersicht</h2>
           <label class="switch" title="Makro-Anteile statt einfarbiger Balken anzeigen">
-            <input type="checkbox" id="weekMacroToggle" onchange="renderWeekChart()">
+            <input type="checkbox" id="weekMacroToggle">
             <span class="slider"></span>
           </label>
         </div>
@@ -302,13 +309,14 @@
       <!-- REZEPT GENERATOR -->
       <div class="card">
         <h2>👨‍🍳 KI Rezept-Generator</h2>
-        <label style="font-size: 0.85rem; color: var(--text-muted);">Mahlzeit:</label>
+        <label style="font-size: 0.85rem; color: var(--text-muted);" for="recipeMealType">Mahlzeit:</label>
         <select id="recipeMealType">
           <option value="breakfast">🌅 Frühstück</option>
           <option value="lunch">🍽️ Mittagessen</option>
           <option value="dinner">🌙 Abendessen</option>
           <option value="snack">🍎 Snack</option>
         </select>
+        <label for="recipeIngredients" style="position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap;">Zutaten</label>
         <input type="text" id="recipeIngredients" placeholder="Zutaten eingeben (z.B. Eier, Tomaten, Reis)">
         <div class="settings-row" style="margin-top: 0.6rem;">
           <label style="font-size: 0.85rem;" for="allowExtraIngredients">Weitere übliche Zutaten dürfen ergänzt werden (z.B. Gewürze, Öl)</label>
@@ -317,24 +325,27 @@
             <span class="slider"></span>
           </label>
         </div>
-        <button class="btn-primary" onclick="generateRecipe()">Rezept aus Zutaten erstellen</button>
-        <div id="recipeOutput" style="margin-top: 0.8rem; font-size: 0.9rem; white-space: pre-line;"></div>
-        <button id="saveRecipeOnlyBtn" class="btn-secondary" style="display:none; margin-top:0.5rem;" onclick="saveRecipeOnly()">Nur in Bibliothek speichern</button>
-        <button id="addRecipeBtn" class="btn-primary" style="display:none; background:#10b981; margin-top:0.5rem;" onclick="addRecipeToMeals()">Rezept ins Tagebuch eintragen</button>
+        <button type="button" class="btn-primary" data-action="generateRecipe">Rezept aus Zutaten erstellen</button>
+        <div id="recipeOutput" style="margin-top: 0.8rem; font-size: 0.9rem; white-space: pre-line;" aria-live="polite"></div>
+        <button type="button" id="saveRecipeOnlyBtn" class="btn-secondary" style="display:none; margin-top:0.5rem;" data-action="saveRecipeOnly">Nur in Bibliothek speichern</button>
+        <button type="button" id="addRecipeBtn" class="btn-primary" style="display:none; background:#10b981; margin-top:0.5rem;" data-action="addRecipeToMeals">Rezept ins Tagebuch eintragen</button>
       </div>
 
       <div class="card">
         <h2>📖 Gespeicherte Rezepte</h2>
-        <input type="text" id="recipeSearchInput" placeholder="Rezept durchsuchen..." oninput="renderRecipeLibrary()">
+        <label for="recipeSearchInput" style="position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap;">Rezept durchsuchen</label>
+        <input type="text" id="recipeSearchInput" placeholder="Rezept durchsuchen...">
         <div class="recipe-filters">
-          <select id="recipeFilterMealType" onchange="renderRecipeLibrary()">
+          <label for="recipeFilterMealType" style="position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap;">Nach Mahlzeit filtern</label>
+          <select id="recipeFilterMealType">
             <option value="">Alle Mahlzeiten</option>
             <option value="breakfast">🌅 Frühstück</option>
             <option value="lunch">🍽️ Mittagessen</option>
             <option value="dinner">🌙 Abendessen</option>
             <option value="snack">🍎 Snack</option>
           </select>
-          <input type="number" id="recipeFilterMaxCalories" placeholder="Max. kcal" min="0" oninput="renderRecipeLibrary()">
+          <label for="recipeFilterMaxCalories" style="position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap;">Maximale Kalorien</label>
+          <input type="number" id="recipeFilterMaxCalories" placeholder="Max. kcal" min="0">
         </div>
         <div class="swipe-hint">↔ Rezept nach links wischen, um es zu löschen</div>
         <ul id="recipeLibraryList" style="list-style:none; margin-top: 0.5rem;"></ul>
@@ -350,7 +361,7 @@
           <label style="font-size: 0.85rem; color: var(--text-muted);" for="calorieLimitInput">Tageslimit (kcal)</label>
           <input type="number" id="calorieLimitInput" min="500" step="50" value="2200">
         </div>
-        <button class="btn-primary" onclick="saveCalorieLimit()">Limit speichern</button>
+        <button type="button" class="btn-primary" data-action="saveCalorieLimit">Limit speichern</button>
       </div>
 
       <div class="card">
@@ -358,7 +369,7 @@
         <div class="settings-row">
           <label style="font-size: 0.9rem;" for="darkModeToggle">Dark Mode</label>
           <label class="switch">
-            <input type="checkbox" id="darkModeToggle" onchange="toggleDarkMode()">
+            <input type="checkbox" id="darkModeToggle">
             <span class="slider"></span>
           </label>
         </div>
@@ -366,16 +377,17 @@
 
       <div class="card">
         <h2>Gemini API Einstellungen</h2>
-        <label style="font-size: 0.85rem; color: var(--text-muted);">API Key aus Google AI Studio:</label>
+        <label style="font-size: 0.85rem; color: var(--text-muted);" for="geminiKeyInput">API Key aus Google AI Studio:</label>
         <input type="password" id="geminiKeyInput" placeholder="AIzaSy...">
-        <button class="btn-primary" onclick="saveGeminiKey()">Gemini Key Speichern</button>
+        <button type="button" class="btn-primary" data-action="saveGeminiKey">Gemini Key Speichern</button>
       </div>
 
       <div class="card">
         <h2>Firebase Cloud Einstellungen</h2>
         <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem;">Füge hier dein Firebase Configuration Object ein, um Daten automatisch online zu sichern.</p>
+        <label for="firebaseConfigInput" style="position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap;">Firebase Configuration Object</label>
         <textarea id="firebaseConfigInput" style="height: 120px; font-family: monospace; font-size: 0.8rem; padding: 0.5rem;" placeholder='{\n  "apiKey": "...",\n  "projectId": "..."\n}'></textarea>
-        <button class="btn-primary" onclick="saveFirebaseConfig()">Firebase Konfiguration Speichern</button>
+        <button type="button" class="btn-primary" data-action="saveFirebaseConfig">Firebase Konfiguration Speichern</button>
       </div>
     </div>
 
@@ -383,29 +395,27 @@
 
   <!-- UNTERE ICON-NAVIGATION -->
   <nav class="bottom-nav">
-    <button id="navDashboard" class="active" onclick="switchPage('dashboard')"><span class="nav-icon">🏠</span>Dashboard</button>
-    <button id="navHistory" onclick="switchPage('history')"><span class="nav-icon">📜</span>Historie</button>
-    <button id="navRecipes" onclick="switchPage('recipes')"><span class="nav-icon">📖</span>Rezepte</button>
-    <button id="navSettings" onclick="switchPage('settings')"><span class="nav-icon">⚙️</span>Einstellungen</button>
+    <button type="button" id="navDashboard" class="active" data-action="switchPage" data-arg="dashboard"><span class="nav-icon" aria-hidden="true">🏠</span>Dashboard</button>
+    <button type="button" id="navHistory" data-action="switchPage" data-arg="history"><span class="nav-icon" aria-hidden="true">📜</span>Historie</button>
+    <button type="button" id="navRecipes" data-action="switchPage" data-arg="recipes"><span class="nav-icon" aria-hidden="true">📖</span>Rezepte</button>
+    <button type="button" id="navSettings" data-action="switchPage" data-arg="settings"><span class="nav-icon" aria-hidden="true">⚙️</span>Einstellungen</button>
   </nav>
 
   <!-- BARCODE SCANNER OVERLAY -->
-  <div id="scannerOverlay" class="scanner-overlay" style="display:none;">
+  <div id="scannerOverlay" class="scanner-overlay" style="display:none;" role="dialog" aria-modal="true" aria-label="Barcode-Scanner">
     <div id="barcodeReaderRegion"></div>
     <div class="scanner-hint">Barcode vor die Kamera halten (EAN/UPC)</div>
-    <button class="btn-primary scanner-close-btn" onclick="stopBarcodeScanner()">Abbrechen</button>
+    <button type="button" class="btn-primary scanner-close-btn" data-action="stopBarcodeScanner">Abbrechen</button>
   </div>
 
-  <!-- EIGENER BESTÄTIGUNGS-DIALOG -->
-  <div id="confirmModal" class="modal-overlay" style="display:none;">
-    <div class="modal-box">
-      <p id="confirmMessage"></p>
-      <div class="modal-actions">
-        <button id="confirmNoBtn" class="modal-cancel-btn">Abbrechen</button>
-        <button id="confirmYesBtn" class="modal-confirm-btn">Löschen</button>
-      </div>
+  <!-- EIGENER BESTÄTIGUNGS-DIALOG (natives <dialog>) -->
+  <dialog id="confirmModal" class="modal-box">
+    <p id="confirmMessage"></p>
+    <div class="modal-actions">
+      <button type="button" id="confirmNoBtn" class="modal-cancel-btn">Abbrechen</button>
+      <button type="button" id="confirmYesBtn" class="modal-confirm-btn">Löschen</button>
     </div>
-  </div>
+  </dialog>
 
   <!-- Barcode-Scan-Bibliothek (liest EAN/UPC-Barcodes über die Kamera) -->
   <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
@@ -513,9 +523,37 @@
       if (opts.text !== undefined) node.textContent = opts.text;
       if (opts.className) node.className = opts.className;
       if (opts.style) Object.assign(node.style, opts.style);
-      if (opts.onclick) node.onclick = opts.onclick;
+      if (opts.onclick) node.addEventListener('click', opts.onclick);
       return node;
     }
+
+    // ===== ZENTRALE EVENT-DELEGATION FÜR data-action BUTTONS =====
+    // Ersetzt Inline-onclick-Attribute im HTML: Struktur (HTML) und
+    // Verhalten (JS) bleiben so sauber getrennt, und Handler lassen sich
+    // an einer Stelle nachvollziehen.
+    const ACTIONS = {
+      scrollToMealList: () => scrollToMealList(),
+      evaluateDayWithAI: () => evaluateDayWithAI(),
+      openFileInput: (arg) => document.getElementById(arg).click(),
+      analyzeMealImage: () => analyzeMealImage(),
+      searchFoodDatabase: () => searchFoodDatabase(),
+      startBarcodeScanner: () => startBarcodeScanner(),
+      stopBarcodeScanner: () => stopBarcodeScanner(),
+      generateRecipe: () => generateRecipe(),
+      saveRecipeOnly: () => saveRecipeOnly(),
+      addRecipeToMeals: () => addRecipeToMeals(),
+      saveCalorieLimit: () => saveCalorieLimit(),
+      saveGeminiKey: () => saveGeminiKey(),
+      saveFirebaseConfig: () => saveFirebaseConfig(),
+      switchPage: (arg) => switchPage(arg)
+    };
+
+    document.addEventListener('click', (e) => {
+      const target = e.target.closest('[data-action]');
+      if (!target) return;
+      const handler = ACTIONS[target.dataset.action];
+      if (handler) handler(target.dataset.arg);
+    });
 
     // ===== SYNC-INDIKATOR (Header-Icon statt Textzeile) =====
     // state: 'local' (grau, nur lokal), 'ok' (grün), 'error' (rot), 'syncing' (gelb)
@@ -524,6 +562,7 @@
       if (!indicator) return;
       indicator.className = 'sync-indicator ' + state;
       indicator.title = tooltip;
+      indicator.setAttribute('aria-label', tooltip);
     }
     window.setSyncIndicator = setSyncIndicator;
 
@@ -541,22 +580,34 @@
       }, duration);
     }
 
-    // ===== EIGENER BESTÄTIGUNGS-DIALOG (ersetzt confirm()) =====
+    // ===== EIGENER BESTÄTIGUNGS-DIALOG (natives <dialog>, ersetzt confirm()) =====
     function showConfirm(message) {
       return new Promise((resolve) => {
-        const overlay = document.getElementById('confirmModal');
+        const dialog = document.getElementById('confirmModal');
         document.getElementById('confirmMessage').textContent = message;
-        overlay.style.display = 'flex';
         const yesBtn = document.getElementById('confirmYesBtn');
         const noBtn = document.getElementById('confirmNoBtn');
+
+        let settled = false;
         function cleanup(result) {
-          overlay.style.display = 'none';
-          yesBtn.onclick = null;
-          noBtn.onclick = null;
+          if (settled) return;
+          settled = true;
+          yesBtn.removeEventListener('click', onYes);
+          noBtn.removeEventListener('click', onNo);
+          dialog.removeEventListener('cancel', onCancel);
+          dialog.close();
           resolve(result);
         }
-        yesBtn.onclick = () => cleanup(true);
-        noBtn.onclick = () => cleanup(false);
+        function onYes() { cleanup(true); }
+        function onNo() { cleanup(false); }
+        // "cancel" feuert nativ bei der Escape-Taste - dialog schließt sich
+        // dann von allein, wir müssen nur noch das Promise auflösen.
+        function onCancel() { settled = true; resolve(false); }
+
+        yesBtn.addEventListener('click', onYes);
+        noBtn.addEventListener('click', onNo);
+        dialog.addEventListener('cancel', onCancel);
+        dialog.showModal();
       });
     }
 
@@ -620,7 +671,7 @@
     // Wischen auf nicht-interaktiven Flächen (nicht auf Buttons, Inputs,
     // Karten mit eigener Wisch-Löschfunktion o.ä.) wechselt den Reiter.
     const PAGE_ORDER = ['dashboard', 'history', 'recipes', 'settings'];
-    const SWIPE_NAV_EXCLUDE = 'button, input, select, textarea, a, nav, .swipe-item, .stepper, .recipe-card, .modal-overlay, .scanner-overlay, .calorie-ring-wrap';
+    const SWIPE_NAV_EXCLUDE = 'button, input, select, textarea, a, nav, .swipe-item, .stepper, .recipe-card, dialog, .scanner-overlay, .calorie-ring-wrap';
 
     function navigateSwipe(direction) {
       const activePage = document.querySelector('.page.active');
@@ -668,6 +719,18 @@
       container.addEventListener('pointercancel', endSwipe);
     }
 
+    // Bindet alle change/input-Handler, die zuvor als Inline-Attribute
+    // (onchange/oninput) im HTML standen.
+    function attachFormListeners() {
+      document.getElementById('imageInputCamera').addEventListener('change', function () { handleImageSelected(this); });
+      document.getElementById('imageInputGallery').addEventListener('change', function () { handleImageSelected(this); });
+      document.getElementById('weekMacroToggle').addEventListener('change', renderWeekChart);
+      document.getElementById('recipeSearchInput').addEventListener('input', renderRecipeLibrary);
+      document.getElementById('recipeFilterMealType').addEventListener('change', renderRecipeLibrary);
+      document.getElementById('recipeFilterMaxCalories').addEventListener('input', renderRecipeLibrary);
+      document.getElementById('darkModeToggle').addEventListener('change', toggleDarkMode);
+    }
+
     window.addEventListener('DOMContentLoaded', async () => {
       if(localStorage.getItem('gemini_api_key')) {
         document.getElementById('geminiKeyInput').value = localStorage.getItem('gemini_api_key');
@@ -678,6 +741,7 @@
 
       document.getElementById('calorieLimitInput').value = getCalorieLimit();
       initTheme();
+      attachFormListeners();
 
       if (window.loadDataFromCloud) {
         const cloudResult = await window.loadDataFromCloud();
@@ -925,8 +989,12 @@
       if (todayMeals.length === 0) {
         const emptyLi = document.createElement('li');
         emptyLi.style.borderBottom = 'none';
-        emptyLi.appendChild(el('div', { className: 'empty-state' }));
-        emptyLi.firstChild.innerHTML = '<span class="empty-icon">🍽️</span><span class="empty-text">Noch keine Mahlzeit erfasst.<br>Nutze Foto-Analyse, Rezept oder Produktsuche.</span>';
+        const emptyState = el('div', { className: 'empty-state' });
+        emptyState.appendChild(el('span', { className: 'empty-icon', text: '🍽️' }));
+        const emptyText = el('span', { className: 'empty-text' });
+        emptyText.append('Noch keine Mahlzeit erfasst.', document.createElement('br'), 'Nutze Foto-Analyse, Rezept oder Produktsuche.');
+        emptyState.appendChild(emptyText);
+        emptyLi.appendChild(emptyState);
         mealListEl.appendChild(emptyLi);
       } else {
         const groups = groupMealsByTime(todayMeals);
@@ -1062,7 +1130,10 @@
       if (sortedDates.length === 0) {
         const emptyLi = document.createElement('li');
         emptyLi.style.borderBottom = 'none';
-        emptyLi.innerHTML = '<div class="empty-state"><span class="empty-icon">📜</span><span class="empty-text">Noch keine Verlaufsdaten vorhanden.</span></div>';
+        const emptyState = el('div', { className: 'empty-state' });
+        emptyState.appendChild(el('span', { className: 'empty-icon', text: '📜' }));
+        emptyState.appendChild(el('span', { className: 'empty-text', text: 'Noch keine Verlaufsdaten vorhanden.' }));
+        emptyLi.appendChild(emptyState);
         historyListEl.appendChild(emptyLi);
         return;
       }
@@ -1076,7 +1147,11 @@
         li.style.display = 'block';
         li.style.padding = '0.75rem 0';
 
-        const card = el('div', { className: 'history-card' });
+        // Als <button> statt klickbarem <div>, damit die Karte per Tastatur
+        // fokussierbar und für Screenreader als Steuerelement erkennbar ist.
+        const card = el('button', { className: 'history-card history-card-toggle' });
+        card.type = 'button';
+        card.setAttribute('aria-expanded', 'false');
 
         const summary = el('div', { className: 'history-card-summary' });
         const infoDiv = el('div');
@@ -1115,7 +1190,10 @@
 
         card.appendChild(summary);
         card.appendChild(details);
-        card.addEventListener('click', () => card.classList.toggle('expanded'));
+        card.addEventListener('click', () => {
+          const expanded = card.classList.toggle('expanded');
+          card.setAttribute('aria-expanded', String(expanded));
+        });
 
         li.appendChild(card);
         historyListEl.appendChild(li);
@@ -1385,6 +1463,7 @@ Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown:
           resetImageSelection();
         }
       });
+      confirmBtn.type = 'button';
       card.appendChild(confirmBtn);
 
       container.appendChild(card);
@@ -1592,9 +1671,17 @@ Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown:
       if (filtered.length === 0) {
         const li = document.createElement('li');
         li.style.borderBottom = 'none';
-        li.innerHTML = savedRecipes.length === 0
-          ? '<div class="empty-state"><span class="empty-icon">📖</span><span class="empty-text">Noch keine Rezepte gespeichert.<br>Generiere eines auf dem Dashboard!</span></div>'
-          : '<div class="empty-state"><span class="empty-icon">🔍</span><span class="empty-text">Keine Rezepte gefunden.</span></div>';
+        const emptyState = el('div', { className: 'empty-state' });
+        if (savedRecipes.length === 0) {
+          emptyState.appendChild(el('span', { className: 'empty-icon', text: '📖' }));
+          const txt = el('span', { className: 'empty-text' });
+          txt.append('Noch keine Rezepte gespeichert.', document.createElement('br'), 'Generiere eines auf dem Dashboard!');
+          emptyState.appendChild(txt);
+        } else {
+          emptyState.appendChild(el('span', { className: 'empty-icon', text: '🔍' }));
+          emptyState.appendChild(el('span', { className: 'empty-text', text: 'Keine Rezepte gefunden.' }));
+        }
+        li.appendChild(emptyState);
         listEl.appendChild(li);
         return;
       }
@@ -1625,6 +1712,7 @@ Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown:
           className: 'btn-primary',
           onclick: () => addSavedRecipeToMeals(recipe)
         });
+        addToMealsBtn.type = 'button';
         actions.appendChild(addToMealsBtn);
 
         card.appendChild(header);
@@ -1671,6 +1759,7 @@ Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown:
           input.value = Math.max(1, (Number(input.value) || 0) - step);
         }
       });
+      minusBtn.type = 'button';
       const plusBtn = el('button', {
         text: '+',
         className: 'stepper-btn',
@@ -1679,6 +1768,7 @@ Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown:
           input.value = (Number(input.value) || 0) + step;
         }
       });
+      plusBtn.type = 'button';
 
       wrap.appendChild(minusBtn);
       wrap.appendChild(input);
@@ -1697,14 +1787,39 @@ Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown:
     // zuverlässig gefunden werden. Werte sind allgemeine Richtwerte,
     // keine exakten Angaben für eine bestimmte Sorte/Charge.
     const LOCAL_FOOD_DB = [
+      // Obst
       { name: "Apfel", calories: 52, protein: 0.3, carbs: 14, fat: 0.2 },
       { name: "Banane", calories: 89, protein: 1.1, carbs: 23, fat: 0.3 },
       { name: "Birne", calories: 57, protein: 0.4, carbs: 15, fat: 0.1 },
       { name: "Orange", calories: 47, protein: 0.9, carbs: 12, fat: 0.1 },
+      { name: "Mandarine", calories: 53, protein: 0.8, carbs: 13, fat: 0.3 },
+      { name: "Grapefruit", calories: 42, protein: 0.8, carbs: 11, fat: 0.1 },
+      { name: "Zitrone", calories: 29, protein: 1.1, carbs: 9, fat: 0.3 },
+      { name: "Limette", calories: 30, protein: 0.7, carbs: 11, fat: 0.2 },
       { name: "Erdbeeren", calories: 32, protein: 0.7, carbs: 8, fat: 0.3 },
+      { name: "Himbeeren", calories: 52, protein: 1.2, carbs: 12, fat: 0.7 },
       { name: "Blaubeeren", calories: 57, protein: 0.7, carbs: 14, fat: 0.3 },
+      { name: "Heidelbeeren", calories: 57, protein: 0.7, carbs: 14, fat: 0.3 },
+      { name: "Brombeeren", calories: 43, protein: 1.4, carbs: 10, fat: 0.5 },
+      { name: "Johannisbeeren", calories: 56, protein: 1.4, carbs: 13, fat: 0.2 },
+      { name: "Stachelbeeren", calories: 44, protein: 0.9, carbs: 10, fat: 0.6 },
       { name: "Weintrauben", calories: 69, protein: 0.6, carbs: 18, fat: 0.2 },
+      { name: "Kirschen", calories: 63, protein: 1.1, carbs: 16, fat: 0.2 },
+      { name: "Pflaume", calories: 46, protein: 0.7, carbs: 11, fat: 0.3 },
+      { name: "Pfirsich", calories: 39, protein: 0.9, carbs: 10, fat: 0.3 },
+      { name: "Nektarine", calories: 44, protein: 1.1, carbs: 10, fat: 0.3 },
+      { name: "Aprikose", calories: 48, protein: 1.4, carbs: 11, fat: 0.4 },
       { name: "Wassermelone", calories: 30, protein: 0.6, carbs: 8, fat: 0.2 },
+      { name: "Honigmelone", calories: 36, protein: 0.8, carbs: 9, fat: 0.2 },
+      { name: "Ananas", calories: 50, protein: 0.5, carbs: 13, fat: 0.1 },
+      { name: "Mango", calories: 60, protein: 0.8, carbs: 15, fat: 0.4 },
+      { name: "Kiwi", calories: 61, protein: 1.1, carbs: 15, fat: 0.5 },
+      { name: "Feige", calories: 74, protein: 0.8, carbs: 19, fat: 0.3 },
+      { name: "Granatapfel", calories: 83, protein: 1.7, carbs: 19, fat: 1.2 },
+      { name: "Avocado", calories: 160, protein: 2.0, carbs: 9, fat: 15.0 },
+      { name: "Rhabarber", calories: 21, protein: 0.9, carbs: 4.5, fat: 0.2 },
+
+      // Gemüse
       { name: "Radieschen", calories: 16, protein: 0.7, carbs: 2, fat: 0.1 },
       { name: "Gurke", calories: 15, protein: 0.7, carbs: 3.6, fat: 0.1 },
       { name: "Tomate", calories: 18, protein: 0.9, carbs: 3.9, fat: 0.2 },
@@ -1713,10 +1828,30 @@ Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown:
       { name: "Brokkoli", calories: 34, protein: 2.8, carbs: 7, fat: 0.4 },
       { name: "Blumenkohl", calories: 25, protein: 1.9, carbs: 5, fat: 0.3 },
       { name: "Zucchini", calories: 17, protein: 1.2, carbs: 3.1, fat: 0.3 },
+      { name: "Aubergine", calories: 25, protein: 1.0, carbs: 6, fat: 0.2 },
+      { name: "Kürbis", calories: 26, protein: 1.0, carbs: 6.5, fat: 0.1 },
       { name: "Spinat", calories: 23, protein: 2.9, carbs: 3.6, fat: 0.4 },
+      { name: "Feldsalat", calories: 15, protein: 2.0, carbs: 1.7, fat: 0.4 },
+      { name: "Eisbergsalat", calories: 14, protein: 0.9, carbs: 3, fat: 0.1 },
+      { name: "Rucola", calories: 25, protein: 2.6, carbs: 3.7, fat: 0.7 },
       { name: "Kartoffel", calories: 77, protein: 2.0, carbs: 17, fat: 0.1 },
+      { name: "Süßkartoffel", calories: 86, protein: 1.6, carbs: 20, fat: 0.1 },
+      { name: "Rote Bete", calories: 43, protein: 1.6, carbs: 10, fat: 0.2 },
       { name: "Zwiebel", calories: 40, protein: 1.1, carbs: 9, fat: 0.1 },
+      { name: "Lauch", calories: 61, protein: 1.5, carbs: 14, fat: 0.3 },
       { name: "Knoblauch", calories: 149, protein: 6.4, carbs: 33, fat: 0.5 },
+      { name: "Sellerie", calories: 16, protein: 0.7, carbs: 3, fat: 0.2 },
+      { name: "Kohlrabi", calories: 27, protein: 1.7, carbs: 5, fat: 0.1 },
+      { name: "Weißkohl", calories: 25, protein: 1.3, carbs: 5.8, fat: 0.1 },
+      { name: "Rotkohl", calories: 31, protein: 1.4, carbs: 7, fat: 0.2 },
+      { name: "Rosenkohl", calories: 43, protein: 3.4, carbs: 9, fat: 0.3 },
+      { name: "Mais", calories: 86, protein: 3.2, carbs: 19, fat: 1.2 },
+      { name: "Erbsen", calories: 81, protein: 5.4, carbs: 14, fat: 0.4 },
+      { name: "Grüne Bohnen", calories: 31, protein: 1.8, carbs: 7, fat: 0.2 },
+      { name: "Spargel", calories: 20, protein: 2.2, carbs: 3.9, fat: 0.1 },
+      { name: "Champignons", calories: 22, protein: 3.1, carbs: 3.3, fat: 0.3 },
+
+      // Grundnahrungsmittel
       { name: "Reis (gekocht)", calories: 130, protein: 2.7, carbs: 28, fat: 0.3 },
       { name: "Nudeln (gekocht)", calories: 131, protein: 5.0, carbs: 25, fat: 1.1 },
       { name: "Haferflocken", calories: 379, protein: 13.0, carbs: 60, fat: 7.0 },
@@ -1857,6 +1992,7 @@ Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown:
           className: 'btn-primary',
           onclick: () => addFoodProductToMeals(p, weightInput)
         });
+        addBtn.type = 'button';
 
         card.appendChild(titleRow);
         if (subtitle) card.appendChild(subtitle);
