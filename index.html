@@ -143,6 +143,9 @@
     .recipe-card-macros { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem; }
     .meal-badge { display: inline-block; font-size: 0.7rem; font-weight: 600; padding: 0.2rem 0.5rem; border-radius: 999px; white-space: nowrap; background: #eff6ff; color: var(--primary); }
     body.dark .meal-badge { background: #1e3a8a55; }
+    .meal-items-list { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.3rem 0; }
+    .meal-item-tag { background: #f1f5f9; color: var(--text); font-size: 0.85rem; font-weight: 600; padding: 0.2rem 0.55rem; border-radius: 6px; }
+    body.dark .meal-item-tag { background: #0f172a; }
     .local-food-badge { display: inline-block; font-size: 0.7rem; font-weight: 600; padding: 0.2rem 0.5rem; border-radius: 999px; white-space: nowrap; background: #dcfce7; color: #059669; }
     body.dark .local-food-badge { background: #05966955; color: #6ee7b7; }
     .recipe-card-instructions { font-size: 0.85rem; margin-top: 0.6rem; white-space: pre-line; display: none; }
@@ -899,6 +902,17 @@
       });
     }
 
+    // Zeigt die einzelnen Bestandteile einer gruppierten Mahlzeit als
+    // separate Tags statt als ein zusammenhängender, mit Komma getrennter
+    // Fließtext – dadurch bleiben mehrere Zutaten optisch klar getrennt.
+    function renderMealNameTags(names) {
+      const wrap = el('div', { className: 'meal-items-list' });
+      names.forEach(name => {
+        wrap.appendChild(el('span', { className: 'meal-item-tag', text: name }));
+      });
+      return wrap;
+    }
+
     function updateDashboard() {
       const todayMeals = allData[TODAY_KEY] || [];
       const totals = dayTotals(TODAY_KEY);
@@ -930,8 +944,7 @@
           titleLine.appendChild(el('span', { text: group.timeLabel, style: { fontSize: '0.75rem', color: 'var(--text-muted)' } }));
           infoDiv.appendChild(titleLine);
 
-          infoDiv.appendChild(el('strong', { text: group.names.join(', ') }));
-          infoDiv.appendChild(document.createElement('br'));
+          infoDiv.appendChild(renderMealNameTags(group.names));
           const macroText = `${group.totals.calories} kcal | P: ${group.totals.protein}g K: ${group.totals.carbs}g F: ${group.totals.fat}g`
             + (group.indices.length > 1 ? ` · ${group.indices.length} Einträge zusammengefasst` : '');
           infoDiv.appendChild(el('small', { text: macroText, style: { color: 'var(--text-muted)' } }));
@@ -1089,7 +1102,7 @@
           titleLine.appendChild(el('span', { className: 'meal-badge', text: getMealTypeLabel(group.mealType) }));
           titleLine.appendChild(el('span', { text: group.timeLabel, style: { fontSize: '0.7rem', color: 'var(--text-muted)' } }));
           nameWrap.appendChild(titleLine);
-          nameWrap.appendChild(el('div', { text: group.names.join(', ') }));
+          nameWrap.appendChild(renderMealNameTags(group.names));
 
           const macroEl = el('div', {
             text: `${group.totals.calories} kcal | P: ${group.totals.protein}g K: ${group.totals.carbs}g F: ${group.totals.fat}g`,
