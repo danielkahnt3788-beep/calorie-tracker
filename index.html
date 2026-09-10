@@ -194,6 +194,109 @@
     .modal-cancel-btn { background: #e2e8f0; color: var(--text); border: none; font-weight: 600; cursor: pointer; }
     body.dark .modal-cancel-btn { background: #334155; }
     .modal-confirm-btn { background: #ef4444; color: white; border: none; font-weight: 600; cursor: pointer; }
+
+    /* ============================================================
+       RESPONSIVE DESKTOP-LAYOUT
+       Ab 900px: seitliche Sidebar-Navigation statt Bottom-Nav,
+       breiteres 2-Spalten-Card-Grid, Hover-Lösch-Buttons als
+       Maus-Alternative zur Wisch-Geste. Die JS-Logik bleibt für
+       Mobile und Desktop identisch, nur die Darstellung passt sich an.
+       ============================================================ */
+
+    /* Hover-Lösch-Button: auf Touchgeräten unsichtbar (dort bleibt die
+       Wisch-Geste die primäre Interaktion), am Desktop beim Hover über
+       eine Zeile sichtbar - Maus-Nutzer müssen so nicht "wischen". */
+    .hover-delete-btn { display: none; }
+
+    @media (hover: hover) and (pointer: fine) {
+      .swipe-content { padding-right: 2.6rem; }
+      .hover-delete-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: absolute;
+        right: 0.5rem;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 30px;
+        height: 30px;
+        padding: 0;
+        margin: 0;
+        border: none;
+        border-radius: 50%;
+        background: transparent;
+        color: var(--text-muted);
+        font-size: 0.9rem;
+        opacity: 0;
+        cursor: pointer;
+        transition: opacity .15s ease, background-color .15s ease, color .15s ease;
+      }
+      .swipe-content:hover .hover-delete-btn,
+      .hover-delete-btn:focus-visible {
+        opacity: 1;
+      }
+      .hover-delete-btn:hover {
+        background: rgba(239, 68, 68, 0.12);
+        color: #ef4444;
+      }
+      /* Kamera-Aufnahme ist ein Mobile-Use-Case - am Desktop reicht die
+         normale Dateiauswahl (Galerie-Button) */
+      .image-source-row [data-arg="imageInputCamera"] { display: none; }
+    }
+
+    @media (min-width: 900px) {
+      :root { --sidebar-width: 220px; }
+
+      body { padding-bottom: 0; }
+
+      header { padding-left: calc(var(--sidebar-width) + 1.5rem); }
+      .header-inner { max-width: 1040px; }
+
+      /* Bottom-Nav wird zur linken Sidebar */
+      nav.bottom-nav {
+        flex-direction: column;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        right: auto;
+        width: var(--sidebar-width);
+        height: 100vh;
+        justify-content: flex-start;
+        align-items: stretch;
+        padding: 1.2rem 0.7rem;
+        gap: 0.3rem;
+        border-top: none;
+        border-right: 1px solid var(--border);
+      }
+      nav.bottom-nav button {
+        flex-direction: row;
+        justify-content: flex-start;
+        gap: 0.7rem;
+        padding: 0.7rem 0.9rem;
+        font-size: 0.85rem;
+      }
+      nav.bottom-nav button .nav-icon { font-size: 1.2rem; }
+      nav.bottom-nav button.active { background: var(--bg); }
+
+      #toastContainer { left: calc(50% + (var(--sidebar-width) / 2)); }
+
+      .container {
+        max-width: 1040px;
+        margin: 1.5rem auto;
+        padding: 0 1.5rem 0 calc(var(--sidebar-width) + 1.5rem);
+      }
+
+      /* Karten einer aktiven Seite als 2-Spalten-Grid statt Stapel.
+         Karten mit .wide belegen immer die volle Breite. */
+      .page.active {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1rem;
+        align-items: start;
+      }
+      .page.active > .card { margin-bottom: 0; }
+      .card.wide { grid-column: 1 / -1; }
+    }
   </style>
 </head>
 <body>
@@ -211,7 +314,7 @@
 
     <!-- SEITE 1: DASHBOARD -->
     <div id="pageDashboard" class="page active">
-      <div class="card">
+      <div class="card wide">
         <h2>Tagesübersicht (<span id="currentDate"></span>)</h2>
         <div class="dashboard-top-row">
           <div class="streak-inline" title="Tage in Folge im Kalorienlimit">
@@ -280,7 +383,7 @@
         <div id="foodSearchResults" aria-live="polite"></div>
       </div>
 
-      <div class="card">
+      <div class="card wide">
         <h2>Erfasste Mahlzeiten heute</h2>
         <ul id="mealList"></ul>
       </div>
@@ -289,7 +392,7 @@
     <!-- SEITE 2: HISTORIE -->
     <div id="pageHistory" class="page">
       <!-- WOCHENÜBERSICHT -->
-      <div class="card">
+      <div class="card wide">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 0.5rem;">
           <h2 style="margin-bottom: 0;">📅 Wochenübersicht</h2>
           <label class="switch" title="Makro-Anteile statt einfarbiger Balken anzeigen">
@@ -301,7 +404,7 @@
         <div id="weekChart" class="week-chart"></div>
       </div>
 
-      <div class="card">
+      <div class="card wide">
         <h2>Tagebuch & Verlaufsdaten</h2>
         <ul id="historyList"></ul>
       </div>
@@ -386,7 +489,7 @@
         <button type="button" class="btn-primary" data-action="saveGeminiKey">Gemini Key Speichern</button>
       </div>
 
-      <div class="card">
+      <div class="card wide">
         <h2>Firebase Cloud Einstellungen</h2>
         <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem;">Füge hier dein Firebase Configuration Object ein, um Daten automatisch online zu sichern.</p>
         <label for="firebaseConfigInput" style="position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap;">Firebase Configuration Object</label>
@@ -658,6 +761,22 @@
 
       contentEl.addEventListener('pointerup', endDrag);
       contentEl.addEventListener('pointercancel', endDrag);
+
+      // Zusätzlicher Lösch-Button für Zeigegeräte mit Hover (Maus/Trackpad):
+      // Auf Touchgeräten bleibt er per CSS unsichtbar, dort funktioniert
+      // weiterhin die Wisch-Geste; am Desktop erscheint er beim Hover über
+      // die Zeile als Alternative, ohne "wischen" zu müssen.
+      const hoverDeleteBtn = el('button', {
+        className: 'hover-delete-btn',
+        text: '🗑️',
+        onclick: async (e) => {
+          e.stopPropagation();
+          await onDelete();
+        }
+      });
+      hoverDeleteBtn.type = 'button';
+      hoverDeleteBtn.setAttribute('aria-label', 'Eintrag löschen');
+      contentEl.appendChild(hoverDeleteBtn);
     }
 
     // ===== ZAHLEN-ANIMATION =====
