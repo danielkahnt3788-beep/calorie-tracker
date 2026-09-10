@@ -840,6 +840,65 @@
       if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
+    // ===== ZEITBASIERTE MAHLZEITEN-GRUPPIERUNG =====
+    // Typische Uhrzeiten für Frühstück/Mittag/Abendessen (24h-Format,
+    // Dezimalstunden). Alles außerhalb dieser Fenster gilt als Snack.
+    const MEAL_TIME_WINDOWS = {
+      breakfast: { start: 6, end: 10 },
+      lunch: { start: 11.5, end: 14 },
+      dinner: { start: 17.5, end: 20.5 }
+    };
+    const MEAL_GROUP_WINDOW_MS = 60 * 60 * 1000; // ca. 1 Stunde
+
+    function classifyMealTime(date) {
+      const hourFrac = date.getHours() + date.getMinutes() / 60;
+      for (const type of Object.keys(MEAL_TIME_WINDOWS)) {
+        const w = MEAL_TIME_WINDOWS[type];
+        if (hourFrac >= w.start && hourFrac <= w.end) return type;
+      }
+      return 'snack';
+    }
+
+    // Fasst Einträge, die innerhalb von ca. 1 Stunde nacheinander erfasst
+    // wurden (Zeitstempel steckt in item.id), zu einer gemeinsamen
+    // "Mahlzeit" zusammen. Gibt eine Liste von Gruppen zurück, jede mit
+    // Summen-Nährwerten, Original-Indizes (für Löschen) und einem
+    // Mahlzeit-Typ, der von der Uhrzeit der Gruppe abgeleitet wird.
+    function groupMealsByTime(meals) {
+      const withIndex = meals
+        .map((item, index) => ({ item, index }))
+        .sort((a, b) => a.item.id - b.item.id);
+
+      const rawGroups = [];
+      withIndex.forEach(entry => {
+        const last = rawGroups[rawGroups.length - 1];
+        if (last && (entry.item.id - last[last.length - 1].item.id) <= MEAL_GROUP_WINDOW_MS) {
+          last.push(entry);
+        } else {
+          rawGroups.push([entry]);
+        }
+      });
+
+      return rawGroups.map(group => {
+        const totals = group.reduce((acc, e) => {
+          acc.calories += e.item.calories || 0;
+          acc.protein += e.item.protein || 0;
+          acc.carbs += e.item.carbs || 0;
+          acc.fat += e.item.fat || 0;
+          return acc;
+        }, { calories: 0, protein: 0, carbs: 0, fat: 0 });
+
+        const firstTime = new Date(group[0].item.id);
+        return {
+          mealType: classifyMealTime(firstTime),
+          timeLabel: firstTime.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }),
+          names: group.map(e => e.item.name),
+          indices: group.map(e => e.index),
+          totals
+        };
+      });
+    }
+
     function updateDashboard() {
       const todayMeals = allData[TODAY_KEY] || [];
       const totals = dayTotals(TODAY_KEY);
@@ -856,7 +915,8 @@
         emptyLi.firstChild.innerHTML = '<span class="empty-icon">🍽️</span><span class="empty-text">Noch keine Mahlzeit erfasst.<br>Nutze Foto-Analyse, Rezept oder Produktsuche.</span>';
         mealListEl.appendChild(emptyLi);
       } else {
-        todayMeals.forEach((item, index) => {
+        const groups = groupMealsByTime(todayMeals);
+        groups.forEach(group => {
           const li = document.createElement('li');
           li.className = 'swipe-item';
 
@@ -864,14 +924,17 @@
 
           const content = el('div', { className: 'swipe-content meal-row' });
           const infoDiv = el('div');
-          const strong = el('strong', { text: item.name });
-          const small = el('small', {
-            text: `${item.calories} kcal | P: ${item.protein}g K: ${item.carbs}g F: ${item.fat}g`,
-            style: { color: 'var(--text-muted)' }
-          });
-          infoDiv.appendChild(strong);
+
+          const titleLine = el('div', { style: { display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.15rem' } });
+          titleLine.appendChild(el('span', { className: 'meal-badge', text: getMealTypeLabel(group.mealType) }));
+          titleLine.appendChild(el('span', { text: group.timeLabel, style: { fontSize: '0.75rem', color: 'var(--text-muted)' } }));
+          infoDiv.appendChild(titleLine);
+
+          infoDiv.appendChild(el('strong', { text: group.names.join(', ') }));
           infoDiv.appendChild(document.createElement('br'));
-          infoDiv.appendChild(small);
+          const macroText = `${group.totals.calories} kcal | P: ${group.totals.protein}g K: ${group.totals.carbs}g F: ${group.totals.fat}g`
+            + (group.indices.length > 1 ? ` · ${group.indices.length} Einträge zusammengefasst` : '');
+          infoDiv.appendChild(el('small', { text: macroText, style: { color: 'var(--text-muted)' } }));
           content.appendChild(infoDiv);
 
           li.appendChild(deleteBg);
@@ -879,7 +942,12 @@
           mealListEl.appendChild(li);
 
           attachSwipeToDelete(li, content, async () => {
-            deleteMeal(index);
+            // Alle Einträge dieser Gruppe entfernen (absteigend sortiert,
+            // damit sich Indizes beim Splicen nicht verschieben)
+            [...group.indices].sort((a, b) => b - a).forEach(idx => {
+              allData[TODAY_KEY].splice(idx, 1);
+            });
+            persistData();
             return true;
           });
         });
@@ -972,11 +1040,6 @@
       });
     }
 
-    function deleteMeal(index) {
-      allData[TODAY_KEY].splice(index, 1);
-      persistData();
-    }
-
     function renderHistory() {
       const historyListEl = document.getElementById('historyList');
       historyListEl.innerHTML = '';
@@ -994,6 +1057,7 @@
       sortedDates.forEach(date => {
         const totals = dayTotals(date);
         const meals = allData[date];
+        const groups = groupMealsByTime(meals);
 
         const li = document.createElement('li');
         li.style.display = 'block';
@@ -1006,7 +1070,7 @@
         infoDiv.appendChild(el('strong', { text: date }));
         infoDiv.appendChild(document.createElement('br'));
         infoDiv.appendChild(el('small', {
-          text: `${meals.length} Mahlzeit(en) · P: ${totals.protein}g K: ${totals.carbs}g F: ${totals.fat}g`,
+          text: `${groups.length} Mahlzeit(en) · P: ${totals.protein}g K: ${totals.carbs}g F: ${totals.fat}g`,
           style: { color: 'var(--text-muted)' }
         }));
 
@@ -1018,14 +1082,20 @@
         summary.appendChild(rightWrap);
 
         const details = el('div', { className: 'history-card-details' });
-        meals.forEach(item => {
+        groups.forEach(group => {
           const row = el('div', { className: 'history-meal-row' });
-          const nameEl = el('div', { text: item.name });
+          const nameWrap = el('div');
+          const titleLine = el('div', { style: { display: 'flex', alignItems: 'center', gap: '0.4rem' } });
+          titleLine.appendChild(el('span', { className: 'meal-badge', text: getMealTypeLabel(group.mealType) }));
+          titleLine.appendChild(el('span', { text: group.timeLabel, style: { fontSize: '0.7rem', color: 'var(--text-muted)' } }));
+          nameWrap.appendChild(titleLine);
+          nameWrap.appendChild(el('div', { text: group.names.join(', ') }));
+
           const macroEl = el('div', {
-            text: `${item.calories} kcal | P: ${item.protein}g K: ${item.carbs}g F: ${item.fat}g`,
+            text: `${group.totals.calories} kcal | P: ${group.totals.protein}g K: ${group.totals.carbs}g F: ${group.totals.fat}g`,
             style: { color: 'var(--text-muted)', fontSize: '0.8rem', textAlign: 'right' }
           });
-          row.appendChild(nameEl);
+          row.appendChild(nameWrap);
           row.appendChild(macroEl);
           details.appendChild(row);
         });
