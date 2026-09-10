@@ -1,0 +1,2326 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Kalorien Tracker PWA</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <meta name="theme-color" content="#2563eb">
+  <!-- iOS berücksichtigt manifest.json bislang nur teilweise, daher
+       zusätzlich die klassischen Apple-Meta-Tags für den Standalone-
+       Modus (kein Safari-Rahmen) beim "Zum Home-Bildschirm"-Icon -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Kalorien">
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+    }
+
+    body.dark {
+      --bg: #0f172a;
+      --card-bg: #1e293b;
+      --text: #f1f5f9;
+      --text-muted: #94a3b8;
+      --border: #334155;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    body { background-color: var(--bg); color: var(--text); padding-bottom: 76px; transition: background-color .2s, color .2s; }
+
+    header { background: var(--primary); color: white; padding: 0.65rem 1rem; position: sticky; top: 0; z-index: 10; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .header-inner { position: relative; display: flex; align-items: center; justify-content: center; max-width: 600px; margin: 0 auto; }
+    header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: 0.2px; }
+    .sync-indicator { position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; background: rgba(255,255,255,0.25); transition: background-color .3s; cursor: default; }
+    .sync-indicator.ok { background: #10b981; }
+    .sync-indicator.error { background: #ef4444; }
+    .sync-indicator.syncing { background: #eab308; }
+
+    /* Zahnrad-Button im Banner (rechts), ersetzt den früheren Platz des
+       Online-Status - öffnet die Einstellungsseite. */
+    .settings-btn {
+      position: absolute;
+      right: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 30px;
+      height: 30px;
+      padding: 0;
+      margin: 0;
+      border: none;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.25);
+      color: white;
+      font-size: 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: background-color .2s ease;
+    }
+    .settings-btn:hover,
+    .settings-btn.active { background: rgba(255,255,255,0.4); }
+    .settings-btn:focus-visible { outline: 2px solid white; outline-offset: 2px; }
+
+    /* Untere Icon-Navigation */
+    nav.bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; display: flex; justify-content: space-around; background: var(--card-bg); border-top: 1px solid var(--border); padding: 0.3rem 0 calc(0.3rem + env(safe-area-inset-bottom, 0px)); z-index: 50; }
+    nav.bottom-nav button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; background: none; border: none; color: var(--text-muted); padding: 0.35rem 0.1rem; cursor: pointer; border-radius: 8px; font-size: 0.68rem; font-weight: 600; transition: background-color .15s ease, color .15s ease; }
+    nav.bottom-nav button .nav-icon { font-size: 1.35rem; line-height: 1; transition: transform .15s ease; }
+    nav.bottom-nav button.active { color: var(--primary); background: rgba(37, 99, 235, 0.12); }
+    nav.bottom-nav button.active .nav-icon { transform: scale(1.08); }
+    body.dark nav.bottom-nav button.active { background: rgba(37, 99, 235, 0.28); }
+
+    .container { max-width: 600px; margin: 1rem auto; padding: 0 1rem; }
+    .page { display: none; animation: fadeIn .25s ease; }
+    .page.active { display: block; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+    .card { background: var(--card-bg); border-radius: 12px; padding: 1.2rem; margin-bottom: 1rem; border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    .card h2 { font-size: 1.1rem; margin-bottom: 0.8rem; color: var(--text); }
+
+    .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; text-align: center; margin-top: 1rem; }
+    .stat-box { background: #f1f5f9; padding: 0.6rem; border-radius: 8px; }
+    body.dark .stat-box { background: #0f172a; }
+    .stat-value { font-size: 1.1rem; font-weight: bold; }
+    .stat-label { font-size: 0.75rem; color: var(--text-muted); }
+    .macro-bar-track { background: #e2e8f0; border-radius: 999px; height: 6px; margin-top: 6px; overflow: hidden; }
+    body.dark .macro-bar-track { background: #334155; }
+    .macro-bar-fill { height: 100%; border-radius: 999px; transition: width .4s ease; }
+
+    /* Tagesübersicht: Serie links, Kalorien-Ring rechts */
+    .dashboard-top-row { display: flex; align-items: center; justify-content: center; gap: 1.2rem; flex-wrap: wrap; }
+
+    /* Kalorien-Ring */
+    .calorie-ring-wrap { position: relative; width: 170px; height: 170px; margin: 0; cursor: pointer; flex-shrink: 0; }
+    .calorie-ring-wrap svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+    .calorie-ring-track { fill: none; stroke: var(--border); stroke-width: 14; }
+    .calorie-ring-progress { fill: none; stroke: #10b981; stroke-width: 14; stroke-linecap: round; transition: stroke-dashoffset .5s ease, stroke .3s ease; }
+    .calorie-ring-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .calorie-ring-value { font-size: 2.1rem; font-weight: bold; color: var(--primary); }
+    .calorie-ring-label { font-size: 0.8rem; color: var(--text-muted); }
+    /* Der Ring ist jetzt ein <button> - generische button-Styles zurücksetzen */
+    button.calorie-ring-wrap { padding: 0; margin: 0; border: none; background: none; font: inherit; color: inherit; }
+    button.calorie-ring-wrap:focus-visible { outline: 3px solid var(--primary); outline-offset: 4px; border-radius: 50%; }
+
+    input, button, select, textarea { width: 100%; padding: 0.75rem; margin-top: 0.5rem; border-radius: 8px; border: 1px solid var(--border); font-size: 1rem; background: var(--card-bg); color: var(--text); }
+    button.btn-primary { background: var(--primary); color: white; border: none; font-weight: 600; cursor: pointer; }
+    button.btn-primary:hover { background: var(--primary-hover); }
+    button.btn-secondary { background: #64748b; color: white; border: none; font-weight: 600; cursor: pointer; }
+
+    ul { list-style: none; }
+    li { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 0; border-bottom: 1px solid var(--border); }
+    li:last-child { border-bottom: none; }
+
+    /* Wisch-zum-Löschen */
+    li.swipe-item { display: block; padding: 0; overflow: hidden; position: relative; }
+    .swipe-delete-bg { position: absolute; inset: 0; background: #ef4444; color: white; display: flex; align-items: center; justify-content: flex-end; padding-right: 1.2rem; font-weight: 600; font-size: 0.85rem; }
+    .swipe-content { position: relative; background: var(--card-bg); touch-action: pan-y; }
+    li.swipe-item .swipe-content.meal-row { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 0; border-bottom: 1px solid var(--border); }
+    .swipe-hint { text-align: center; font-size: 0.7rem; color: var(--text-muted); margin-top: 0.3rem; }
+
+    /* Wochenübersicht */
+    .week-chart { display: flex; justify-content: space-between; align-items: flex-end; height: 130px; margin-top: 1rem; gap: 6px; }
+    .week-bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; }
+    .week-bar-value { font-size: 0.65rem; color: var(--text-muted); margin-bottom: 2px; min-height: 12px; }
+    .week-bar { width: 60%; background: var(--primary); border-radius: 4px 4px 0 0; min-height: 3px; transition: height .3s; }
+    .week-bar.over { background: #ef4444; }
+    .week-bar-label { font-size: 0.7rem; color: var(--text-muted); margin-top: 4px; }
+    .week-bar-stacked { width: 60%; border-radius: 4px 4px 0 0; min-height: 3px; transition: height .3s; display: flex; flex-direction: column; overflow: hidden; }
+    .week-bar-stacked > div { width: 100%; }
+    .week-macro-legend { font-size: 0.7rem; color: var(--text-muted); margin-bottom: 0.3rem; }
+
+    /* Serie (in die Tagesübersicht integriert), wächst mit der Länge der Serie */
+    .streak-inline { display: flex; flex-direction: column; align-items: center; justify-content: center; flex-shrink: 0; width: 64px; text-align: center; }
+    /* KI-Bewertungs-Button neben dem Ring: gleiche Breite wie die Serie
+       links, damit der Ring optisch mittig bleibt. */
+    .ai-eval-btn { width: 64px; flex-shrink: 0; margin-top: 0; padding: 0.5rem 0.3rem; font-size: 0.7rem; line-height: 1.2; }
+    .streak-icon { font-size: 1.4rem; transition: font-size .3s ease; }
+    .streak-value { font-weight: bold; margin-top: 0.15rem; transition: font-size .3s ease; font-size: 0.85rem; }
+
+    /* Einstellungen: Zeilen & Umschalter */
+    .settings-row { display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem; gap: 1rem; }
+    .settings-row input[type="number"] { width: 100px; margin-top: 0; }
+    .switch { position: relative; display: inline-block; width: 48px; height: 26px; flex-shrink: 0; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #cbd5e1; transition: .2s; border-radius: 26px; }
+    .slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 3px; bottom: 3px; background-color: white; transition: .2s; border-radius: 50%; }
+    input:checked + .slider { background-color: var(--primary); }
+    input:checked + .slider:before { transform: translateX(22px); }
+
+    /* Stepper (+/-) für Mengenangaben */
+    .stepper { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.6rem; }
+    .stepper-btn { width: 44px; flex-shrink: 0; margin-top: 0; padding: 0.5rem; font-size: 1.3rem; font-weight: 700; background: var(--bg); border: 1px solid var(--border); color: var(--text); cursor: pointer; }
+    .stepper-input { text-align: center; margin-top: 0; flex: 1; }
+
+    /* Kamera/Galerie-Auswahl */
+    .image-source-row { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+    .image-source-row button { width: auto; flex: 1; margin-top: 0; }
+
+    /* Produktsuche */
+    .product-result { border: 1px solid var(--border); border-radius: 8px; padding: 0.8rem; margin-top: 0.8rem; }
+    .product-result .product-title { font-weight: 600; }
+    .product-result .product-macros { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem; }
+
+    /* Barcode-Scanner Overlay */
+    .scanner-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 1rem; }
+    #barcodeReaderRegion { width: 100%; max-width: 400px; background: #000; border-radius: 12px; overflow: hidden; }
+    .scanner-close-btn { max-width: 220px; margin-top: 1rem; }
+    .scanner-hint { color: #e2e8f0; font-size: 0.85rem; margin-top: 0.8rem; text-align: center; }
+
+    /* Rezept-Bibliothek */
+    .recipe-filters { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .recipe-filters > * { flex: 1; min-width: 120px; margin-top: 0.5rem; }
+    .recipe-card { border: 1px solid var(--border); border-radius: 8px; padding: 0.9rem; margin: 0.8rem 0; cursor: pointer; background: var(--card-bg); }
+    .recipe-card-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.6rem; }
+    .recipe-card-title { font-weight: 600; }
+    .recipe-card-macros { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem; }
+    .meal-badge { display: inline-block; font-size: 0.7rem; font-weight: 600; padding: 0.2rem 0.5rem; border-radius: 999px; white-space: nowrap; background: #eff6ff; color: var(--primary); }
+    body.dark .meal-badge { background: #1e3a8a55; }
+    .meal-items-list { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.3rem 0; }
+    .meal-item-tag { background: #f1f5f9; color: var(--text); font-size: 0.85rem; font-weight: 600; padding: 0.2rem 0.55rem; border-radius: 6px; }
+    body.dark .meal-item-tag { background: #0f172a; }
+    .local-food-badge { display: inline-block; font-size: 0.7rem; font-weight: 600; padding: 0.2rem 0.5rem; border-radius: 999px; white-space: nowrap; background: #dcfce7; color: #059669; }
+    body.dark .local-food-badge { background: #05966955; color: #6ee7b7; }
+    .recipe-card-instructions { font-size: 0.85rem; margin-top: 0.6rem; white-space: pre-line; display: none; }
+    .recipe-card.expanded .recipe-card-instructions { display: block; }
+    .recipe-card-actions { margin-top: 0.6rem; }
+    .recipe-card-actions button { margin-top: 0; padding: 0.5rem; font-size: 0.85rem; }
+
+    /* Historie: aufklappbare Tageskarten mit Mahlzeiten-Details */
+    .history-card-toggle { cursor: pointer; width: 100%; text-align: left; background: none; border: none; padding: 0; }
+    .history-card-summary { display: flex; justify-content: space-between; align-items: center; }
+    .history-expand-hint { font-size: 0.7rem; color: var(--text-muted); }
+    .history-card-details { display: none; margin-top: 0.7rem; padding-top: 0.7rem; border-top: 1px solid var(--border); }
+    .history-card.expanded .history-card-details { display: block; }
+    .history-meal-row { display: flex; justify-content: space-between; align-items: center; padding: 0.4rem 0; font-size: 0.85rem; }
+    .history-meal-row:not(:last-child) { border-bottom: 1px dashed var(--border); }
+
+    /* Leere Zustände */
+    .empty-state { text-align: center; padding: 1.6rem 0.5rem; color: var(--text-muted); }
+    .empty-state .empty-icon { font-size: 2.2rem; display: block; margin-bottom: 0.5rem; }
+    .empty-state .empty-text { font-size: 0.9rem; }
+
+    /* Ladespinner */
+    .spinner { width: 16px; height: 16px; border: 3px solid var(--border); border-top-color: var(--primary); border-radius: 50%; display: inline-block; animation: spin .7s linear infinite; vertical-align: middle; margin-right: 6px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-line { color: var(--text-muted); display: flex; align-items: center; margin-top: 0.5rem; }
+
+    /* Toasts */
+    #toastContainer { position: fixed; top: calc(1rem + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); z-index: 300; display: flex; flex-direction: column; gap: 0.5rem; width: calc(100% - 2rem); max-width: 560px; pointer-events: none; }
+    .toast { background: var(--card-bg); color: var(--text); border: 1px solid var(--border); border-left: 4px solid var(--primary); border-radius: 8px; padding: 0.7rem 1rem; font-size: 0.85rem; box-shadow: 0 4px 14px rgba(0,0,0,0.18); opacity: 0; transform: translateY(-12px); transition: opacity .25s ease, transform .25s ease; }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .toast.success { border-left-color: #10b981; }
+    .toast.error { border-left-color: #ef4444; }
+
+    /* Eigener Bestätigungs-Dialog (natives <dialog>) */
+    dialog.modal-box { background: var(--card-bg); border-radius: 12px; padding: 1.2rem; max-width: 340px; width: 100%; border: none; margin: auto; color: var(--text); }
+    dialog.modal-box::backdrop { background: rgba(0,0,0,0.5); }
+    .modal-box p { margin-bottom: 1rem; font-size: 0.95rem; color: var(--text); }
+    .modal-actions { display: flex; gap: 0.6rem; }
+    .modal-actions button { flex: 1; margin-top: 0; }
+    .modal-cancel-btn { background: #e2e8f0; color: var(--text); border: none; font-weight: 600; cursor: pointer; }
+    body.dark .modal-cancel-btn { background: #334155; }
+    .modal-confirm-btn { background: #ef4444; color: white; border: none; font-weight: 600; cursor: pointer; }
+
+    /* ============================================================
+       RESPONSIVE DESKTOP-LAYOUT
+       Ab 900px: seitliche Sidebar-Navigation statt Bottom-Nav,
+       breiteres 2-Spalten-Card-Grid, Hover-Lösch-Buttons als
+       Maus-Alternative zur Wisch-Geste. Die JS-Logik bleibt für
+       Mobile und Desktop identisch, nur die Darstellung passt sich an.
+       ============================================================ */
+
+    /* Hover-Lösch-Button: auf Touchgeräten unsichtbar (dort bleibt die
+       Wisch-Geste die primäre Interaktion), am Desktop beim Hover über
+       eine Zeile sichtbar - Maus-Nutzer müssen so nicht "wischen". */
+    .hover-delete-btn { display: none; }
+
+    @media (hover: hover) and (pointer: fine) {
+      .swipe-content { padding-right: 2.6rem; }
+      .hover-delete-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: absolute;
+        right: 0.5rem;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 30px;
+        height: 30px;
+        padding: 0;
+        margin: 0;
+        border: none;
+        border-radius: 50%;
+        background: transparent;
+        color: var(--text-muted);
+        font-size: 0.9rem;
+        opacity: 0;
+        cursor: pointer;
+        transition: opacity .15s ease, background-color .15s ease, color .15s ease;
+      }
+      .swipe-content:hover .hover-delete-btn,
+      .hover-delete-btn:focus-visible {
+        opacity: 1;
+      }
+      .hover-delete-btn:hover {
+        background: rgba(239, 68, 68, 0.12);
+        color: #ef4444;
+      }
+      /* Kamera-Aufnahme ist ein Mobile-Use-Case - am Desktop reicht die
+         normale Dateiauswahl (Galerie-Button) */
+      .image-source-row [data-arg="imageInputCamera"] { display: none; }
+    }
+
+    @media (min-width: 900px) {
+      :root { --sidebar-width: 220px; }
+
+      body { padding-bottom: 0; }
+
+      header { padding-left: calc(var(--sidebar-width) + 1.5rem); }
+      .header-inner { max-width: 1040px; }
+
+      /* Bottom-Nav wird zur linken Sidebar */
+      nav.bottom-nav {
+        flex-direction: column;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        right: auto;
+        width: var(--sidebar-width);
+        height: 100vh;
+        justify-content: flex-start;
+        align-items: stretch;
+        padding: 1.2rem 0.7rem;
+        gap: 0.3rem;
+        border-top: none;
+        border-right: 1px solid var(--border);
+      }
+      nav.bottom-nav button {
+        flex-direction: row;
+        justify-content: flex-start;
+        gap: 0.7rem;
+        padding: 0.7rem 0.9rem;
+        font-size: 0.85rem;
+      }
+      nav.bottom-nav button .nav-icon { font-size: 1.2rem; }
+
+      #toastContainer { left: calc(50% + (var(--sidebar-width) / 2)); }
+
+      .container {
+        max-width: 1040px;
+        margin: 1.5rem auto;
+        padding: 0 1.5rem 0 calc(var(--sidebar-width) + 1.5rem);
+      }
+
+      /* Karten einer aktiven Seite als 2-Spalten-Grid statt Stapel.
+         Karten mit .wide belegen immer die volle Breite. */
+      .page.active {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1rem;
+        align-items: start;
+      }
+      .page.active > .card { margin-bottom: 0; }
+      .card.wide { grid-column: 1 / -1; }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="header-inner">
+      <div id="syncIndicator" class="sync-indicator local" role="status" aria-live="polite" title="Initialisiere..." aria-label="Initialisiere...">☁️</div>
+      <h1>🥗 Kalorien Tracker</h1>
+      <button type="button" id="settingsBtn" class="settings-btn" data-action="switchPage" data-arg="settings" aria-label="Einstellungen öffnen" title="Einstellungen">⚙️</button>
+    </div>
+  </header>
+
+  <div id="toastContainer" aria-live="polite" aria-atomic="true"></div>
+
+  <div class="container">
+
+    <!-- SEITE 1: DASHBOARD -->
+    <div id="pageDashboard" class="page active">
+      <div class="card wide">
+        <h2>Tagesübersicht (<span id="currentDate"></span>)</h2>
+        <div class="dashboard-top-row">
+          <div class="streak-inline" title="Tage in Folge im Kalorienlimit">
+            <div id="streakIcon" class="streak-icon" aria-hidden="true">🔥</div>
+            <div id="streakValue" class="streak-value">0 Tage</div>
+          </div>
+          <button type="button" class="calorie-ring-wrap" data-action="scrollToMealList" aria-label="Zu den heutigen Mahlzeiten springen">
+            <svg viewBox="0 0 170 170" aria-hidden="true">
+              <circle class="calorie-ring-track" cx="85" cy="85" r="72"></circle>
+              <circle id="calorieRingProgress" class="calorie-ring-progress" cx="85" cy="85" r="72"></circle>
+            </svg>
+            <div class="calorie-ring-center">
+              <span id="totalCalories" class="calorie-ring-value">0</span>
+              <span class="calorie-ring-label">/ <span id="calorieLimitDisplay">2200</span> kcal</span>
+            </div>
+          </button>
+          <button type="button" class="btn-secondary ai-eval-btn" data-action="evaluateDayWithAI">🤖 KI-Check</button>
+        </div>
+        <div class="stat-grid">
+          <div class="stat-box">
+            <div id="totalProtein" class="stat-value" style="color: #ef4444;">0g</div>
+            <div class="stat-label">Eiweiß</div>
+            <div class="macro-bar-track"><div id="proteinBar" class="macro-bar-fill" style="background:#ef4444; width:0%;"></div></div>
+          </div>
+          <div class="stat-box">
+            <div id="totalCarbs" class="stat-value" style="color: #eab308;">0g</div>
+            <div class="stat-label">Kohlenhydrate</div>
+            <div class="macro-bar-track"><div id="carbsBar" class="macro-bar-fill" style="background:#eab308; width:0%;"></div></div>
+          </div>
+          <div class="stat-box">
+            <div id="totalFat" class="stat-value" style="color: #10b981;">0g</div>
+            <div class="stat-label">Fett</div>
+            <div class="macro-bar-track"><div id="fatBar" class="macro-bar-fill" style="background:#10b981; width:0%;"></div></div>
+          </div>
+        </div>
+        <div id="dayEvaluationOutput" style="margin-top: 1rem; font-size: 0.9rem; white-space: pre-line;" aria-live="polite"></div>
+      </div>
+
+      <!-- FOTO ANALYSE -->
+      <div class="card">
+        <h2>📸 KI Essens-Analyse</h2>
+        <div class="image-source-row">
+          <button type="button" class="btn-primary" data-action="openFileInput" data-arg="imageInputCamera">📷 Kamera</button>
+          <button type="button" class="btn-secondary" data-action="openFileInput" data-arg="imageInputGallery">🖼️ Galerie</button>
+        </div>
+        <!-- capture="environment" erzwingt auf unterstützten Geräten direkt die Kamera -->
+        <input type="file" id="imageInputCamera" accept="image/*" capture="environment" style="display:none">
+        <!-- Kein capture-Attribut → öffnet die Bildergalerie/Dateiauswahl -->
+        <input type="file" id="imageInputGallery" accept="image/*" style="display:none">
+        <div id="selectedImagePreview" style="margin-top: 0.6rem; font-size: 0.85rem; color: var(--text-muted);"></div>
+
+        <label for="mealDescriptionInput" style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.8rem; display: block;">Oder (zusätzlich) dein Essen kurz beschreiben:</label>
+        <textarea id="mealDescriptionInput" placeholder="z.B. Große Portion Spaghetti Bolognese mit geriebenem Parmesan" style="min-height: 64px; resize: vertical;"></textarea>
+
+        <button type="button" class="btn-primary" style="margin-top: 0.6rem;" data-action="analyzeMeal">Essen analysieren</button>
+        <div id="imageAnalysisOutput" style="margin-top: 0.8rem; font-size: 0.9rem; white-space: pre-line;" aria-live="polite"></div>
+      </div>
+
+      <!-- PRODUKTSUCHE / BARCODE -->
+      <div class="card">
+        <h2>🛒 Produktsuche & Barcode-Scanner</h2>
+        <label for="foodSearchInput" style="position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap;">Lebensmittel suchen</label>
+        <input type="text" id="foodSearchInput" placeholder="z.B. DM Hafermilch">
+        <button type="button" class="btn-primary" data-action="searchFoodDatabase">Produkt suchen</button>
+        <button type="button" class="btn-secondary" style="margin-top:0.5rem;" data-action="startBarcodeScanner">📷 Barcode scannen</button>
+        <div id="foodSearchResults" aria-live="polite"></div>
+      </div>
+
+      <div class="card wide">
+        <h2>Erfasste Mahlzeiten heute</h2>
+        <ul id="mealList"></ul>
+      </div>
+    </div>
+
+    <!-- SEITE 2: HISTORIE -->
+    <div id="pageHistory" class="page">
+      <!-- WOCHENÜBERSICHT -->
+      <div class="card wide">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 0.5rem;">
+          <h2 style="margin-bottom: 0;">📅 Wochenübersicht</h2>
+          <label class="switch" title="Makro-Anteile statt einfarbiger Balken anzeigen">
+            <input type="checkbox" id="weekMacroToggle">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div id="weekMacroLegend" class="week-macro-legend" style="display:none;">🔴 Eiweiß · 🟡 Kohlenhydrate · 🟢 Fett – Balkenhöhe bleibt die Kalorienmenge</div>
+        <div id="weekChart" class="week-chart"></div>
+      </div>
+
+      <div class="card wide">
+        <h2>Tagebuch & Verlaufsdaten</h2>
+        <ul id="historyList"></ul>
+      </div>
+    </div>
+
+    <!-- SEITE 2b: REZEPT-BIBLIOTHEK -->
+    <div id="pageRecipes" class="page">
+
+      <!-- REZEPT GENERATOR -->
+      <div class="card">
+        <h2>👨‍🍳 KI Rezept-Generator</h2>
+        <label style="font-size: 0.85rem; color: var(--text-muted);" for="recipeMealType">Mahlzeit:</label>
+        <select id="recipeMealType">
+          <option value="breakfast">🌅 Frühstück</option>
+          <option value="lunch">🍽️ Mittagessen</option>
+          <option value="dinner">🌙 Abendessen</option>
+          <option value="snack">🍎 Snack</option>
+        </select>
+        <label for="recipeIngredients" style="position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap;">Zutaten</label>
+        <input type="text" id="recipeIngredients" placeholder="Zutaten eingeben (z.B. Eier, Tomaten, Reis)">
+        <div class="settings-row" style="margin-top: 0.6rem;">
+          <label style="font-size: 0.85rem;" for="allowExtraIngredients">Weitere übliche Zutaten dürfen ergänzt werden (z.B. Gewürze, Öl)</label>
+          <label class="switch">
+            <input type="checkbox" id="allowExtraIngredients" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+        <button type="button" class="btn-primary" data-action="generateRecipe">Rezept aus Zutaten erstellen</button>
+        <div id="recipeOutput" style="margin-top: 0.8rem; font-size: 0.9rem; white-space: pre-line;" aria-live="polite"></div>
+        <button type="button" id="saveRecipeOnlyBtn" class="btn-secondary" style="display:none; margin-top:0.5rem;" data-action="saveRecipeOnly">Nur in Bibliothek speichern</button>
+        <button type="button" id="addRecipeBtn" class="btn-primary" style="display:none; background:#10b981; margin-top:0.5rem;" data-action="addRecipeToMeals">Rezept ins Tagebuch eintragen</button>
+      </div>
+
+      <div class="card">
+        <h2>📖 Gespeicherte Rezepte</h2>
+        <label for="recipeSearchInput" style="position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap;">Rezept durchsuchen</label>
+        <input type="text" id="recipeSearchInput" placeholder="Rezept durchsuchen...">
+        <div class="recipe-filters">
+          <label for="recipeFilterMealType" style="position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap;">Nach Mahlzeit filtern</label>
+          <select id="recipeFilterMealType">
+            <option value="">Alle Mahlzeiten</option>
+            <option value="breakfast">🌅 Frühstück</option>
+            <option value="lunch">🍽️ Mittagessen</option>
+            <option value="dinner">🌙 Abendessen</option>
+            <option value="snack">🍎 Snack</option>
+          </select>
+          <label for="recipeFilterMaxCalories" style="position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap;">Maximale Kalorien</label>
+          <input type="number" id="recipeFilterMaxCalories" placeholder="Max. kcal" min="0">
+        </div>
+        <div class="swipe-hint">↔ Rezept nach links wischen, um es zu löschen</div>
+        <ul id="recipeLibraryList" style="list-style:none; margin-top: 0.5rem;"></ul>
+      </div>
+    </div>
+
+    <!-- SEITE 3: EINSTELLUNGEN & FIREBASE -->
+    <div id="pageSettings" class="page">
+
+      <div class="card">
+        <h2>🎯 Persönliches Kalorienlimit</h2>
+        <div class="settings-row">
+          <label style="font-size: 0.85rem; color: var(--text-muted);" for="calorieLimitInput">Tageslimit (kcal)</label>
+          <input type="number" id="calorieLimitInput" min="500" step="50" value="2200">
+        </div>
+        <button type="button" class="btn-primary" data-action="saveCalorieLimit">Limit speichern</button>
+      </div>
+
+      <div class="card">
+        <h2>🎨 Darstellung</h2>
+        <div class="settings-row">
+          <label style="font-size: 0.9rem;" for="darkModeToggle">Dark Mode</label>
+          <label class="switch">
+            <input type="checkbox" id="darkModeToggle">
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Gemini API Einstellungen</h2>
+        <label style="font-size: 0.85rem; color: var(--text-muted);" for="geminiKeyInput">API Key aus Google AI Studio:</label>
+        <input type="password" id="geminiKeyInput" placeholder="AIzaSy...">
+        <button type="button" class="btn-primary" data-action="saveGeminiKey">Gemini Key Speichern</button>
+      </div>
+
+      <div class="card wide">
+        <h2>Firebase Cloud Einstellungen</h2>
+        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem;">Füge hier dein Firebase Configuration Object ein, um Daten automatisch online zu sichern.</p>
+        <label for="firebaseConfigInput" style="position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap;">Firebase Configuration Object</label>
+        <textarea id="firebaseConfigInput" style="height: 120px; font-family: monospace; font-size: 0.8rem; padding: 0.5rem;" placeholder='{\n  "apiKey": "...",\n  "projectId": "..."\n}'></textarea>
+        <button type="button" class="btn-primary" data-action="saveFirebaseConfig">Firebase Konfiguration Speichern</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- UNTERE ICON-NAVIGATION -->
+  <nav class="bottom-nav">
+    <button type="button" id="navDashboard" class="active" data-action="switchPage" data-arg="dashboard"><span class="nav-icon" aria-hidden="true">🏠</span>Dashboard</button>
+    <button type="button" id="navHistory" data-action="switchPage" data-arg="history"><span class="nav-icon" aria-hidden="true">📜</span>Historie</button>
+    <button type="button" id="navRecipes" data-action="switchPage" data-arg="recipes"><span class="nav-icon" aria-hidden="true">📖</span>Rezepte</button>
+  </nav>
+
+  <!-- BARCODE SCANNER OVERLAY -->
+  <div id="scannerOverlay" class="scanner-overlay" style="display:none;" role="dialog" aria-modal="true" aria-label="Barcode-Scanner">
+    <div id="barcodeReaderRegion"></div>
+    <div class="scanner-hint">Barcode vor die Kamera halten (EAN/UPC)</div>
+    <button type="button" class="btn-primary scanner-close-btn" data-action="stopBarcodeScanner">Abbrechen</button>
+  </div>
+
+  <!-- EIGENER BESTÄTIGUNGS-DIALOG (natives <dialog>) -->
+  <dialog id="confirmModal" class="modal-box">
+    <p id="confirmMessage"></p>
+    <div class="modal-actions">
+      <button type="button" id="confirmNoBtn" class="modal-cancel-btn">Abbrechen</button>
+      <button type="button" id="confirmYesBtn" class="modal-confirm-btn">Löschen</button>
+    </div>
+  </dialog>
+
+  <!-- Barcode-Scan-Bibliothek (liest EAN/UPC-Barcodes über die Kamera) -->
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+
+  <!-- FIREBASE MODUL -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+    let db = null;
+
+    window.initFirebase = function() {
+      const configStr = localStorage.getItem('firebase_config');
+
+      if (!configStr) {
+        window.setSyncIndicator('local', '💾 Nur lokaler Speicher (kein Firebase konfiguriert)');
+        return;
+      }
+
+      try {
+        const firebaseConfig = JSON.parse(configStr);
+        const app = initializeApp(firebaseConfig);
+        db = getFirestore(app);
+        window.setSyncIndicator('ok', '☁️ Firebase Online-Speicher aktiv');
+      } catch (e) {
+        console.error("Firebase Fehler:", e);
+        window.setSyncIndicator('error', '⚠️ Firebase Konfigurationsfehler');
+      }
+    };
+
+    // Speichert Daten inkl. Zeitstempel, damit beim Laden der neuere
+    // Stand (lokal oder Cloud) erkannt werden kann. Sichert zusätzlich
+    // die Rezept-Bibliothek mit, damit sie nicht nur lokal im Browser liegt.
+    window.saveDataToCloud = async function(data) {
+      if (!db) return;
+      try {
+        window.setSyncIndicator('syncing', '⏳ Speichere in Cloud...');
+        const recipesData = JSON.parse(localStorage.getItem('saved_recipes')) || [];
+        await setDoc(doc(db, "users_data", "default_user"), {
+          calorie_data: data,
+          saved_recipes: recipesData,
+          updatedAt: new Date().toISOString()
+        });
+        window.setSyncIndicator('ok', '☁️ Synchronisiert (' + new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ')');
+      } catch (e) {
+        console.error("Fehler beim Cloud-Save:", e);
+        window.setSyncIndicator('error', '❌ Fehler beim Cloud-Speichern');
+      }
+    };
+
+    // Gibt {calorie_data, saved_recipes, updatedAt} zurück, damit der
+    // Aufrufer mit dem lokalen Zeitstempel vergleichen kann, statt blind
+    // zu überschreiben.
+    window.loadDataFromCloud = async function() {
+      if (!db) return null;
+      try {
+        const docRef = doc(db, "users_data", "default_user");
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          const d = docSnap.data();
+          return { calorie_data: d.calorie_data, saved_recipes: d.saved_recipes || null, updatedAt: d.updatedAt || null };
+        }
+      } catch (e) {
+        console.error("Fehler beim Cloud-Load:", e);
+      }
+      return null;
+    };
+
+    window.initFirebase();
+  </script>
+
+  <!-- HAUPT APP LOGIK -->
+  <script>
+    const TODAY_KEY = new Date().toISOString().split('T')[0];
+    const LOCAL_TS_KEY = 'user_calorie_data_updatedAt';
+    const THEME_KEY = 'theme_mode';
+    const CALORIE_LIMIT_KEY = 'calorie_limit';
+    const DEFAULT_CALORIE_LIMIT = 2200;
+    const RECIPES_KEY = 'saved_recipes';
+
+    const MEAL_TYPES = {
+      breakfast: { label: 'Frühstück', icon: '🌅', share: 0.25 },
+      lunch:     { label: 'Mittagessen', icon: '🍽️', share: 0.35 },
+      dinner:    { label: 'Abendessen', icon: '🌙', share: 0.30 },
+      snack:     { label: 'Snack', icon: '🍎', share: 0.10 }
+    };
+
+    let allData = JSON.parse(localStorage.getItem('user_calorie_data')) || {};
+    let savedRecipes = JSON.parse(localStorage.getItem(RECIPES_KEY)) || [];
+    let currentGeneratedRecipe = null;
+    let currentRecipeSavedId = null;
+    let html5QrCode = null;
+
+    if (!allData[TODAY_KEY]) {
+      allData[TODAY_KEY] = [];
+    }
+
+    document.getElementById('currentDate').innerText = TODAY_KEY;
+
+    // Kleines Hilfsmittel, um Texte sicher (ohne HTML-Interpretation) in
+    // Elemente einzufügen. Verhindert, dass z.B. eine KI-Antwort mit
+    // HTML/Skript-Inhalt im DOM ausgeführt wird.
+    function el(tag, opts = {}) {
+      const node = document.createElement(tag);
+      if (opts.text !== undefined) node.textContent = opts.text;
+      if (opts.className) node.className = opts.className;
+      if (opts.style) Object.assign(node.style, opts.style);
+      if (opts.onclick) node.addEventListener('click', opts.onclick);
+      return node;
+    }
+
+    // ===== ZENTRALE EVENT-DELEGATION FÜR data-action BUTTONS =====
+    // Ersetzt Inline-onclick-Attribute im HTML: Struktur (HTML) und
+    // Verhalten (JS) bleiben so sauber getrennt, und Handler lassen sich
+    // an einer Stelle nachvollziehen.
+    const ACTIONS = {
+      scrollToMealList: () => scrollToMealList(),
+      evaluateDayWithAI: () => evaluateDayWithAI(),
+      openFileInput: (arg) => document.getElementById(arg).click(),
+      analyzeMeal: () => analyzeMeal(),
+      searchFoodDatabase: () => searchFoodDatabase(),
+      startBarcodeScanner: () => startBarcodeScanner(),
+      stopBarcodeScanner: () => stopBarcodeScanner(),
+      generateRecipe: () => generateRecipe(),
+      saveRecipeOnly: () => saveRecipeOnly(),
+      addRecipeToMeals: () => addRecipeToMeals(),
+      saveCalorieLimit: () => saveCalorieLimit(),
+      saveGeminiKey: () => saveGeminiKey(),
+      saveFirebaseConfig: () => saveFirebaseConfig(),
+      switchPage: (arg) => switchPage(arg)
+    };
+
+    document.addEventListener('click', (e) => {
+      const target = e.target.closest('[data-action]');
+      if (!target) return;
+      const handler = ACTIONS[target.dataset.action];
+      if (handler) handler(target.dataset.arg);
+    });
+
+    // ===== SYNC-INDIKATOR (Header-Icon statt Textzeile) =====
+    // state: 'local' (grau, nur lokal), 'ok' (grün), 'error' (rot), 'syncing' (gelb)
+    function setSyncIndicator(state, tooltip) {
+      const indicator = document.getElementById('syncIndicator');
+      if (!indicator) return;
+      indicator.className = 'sync-indicator ' + state;
+      indicator.title = tooltip;
+      indicator.setAttribute('aria-label', tooltip);
+    }
+    window.setSyncIndicator = setSyncIndicator;
+
+    // ===== TOASTS (ersetzen alert() für Hinweise) =====
+    function showToast(message, type = 'info', duration = 3000) {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      toast.className = `toast ${type}`;
+      toast.textContent = message;
+      container.appendChild(toast);
+      requestAnimationFrame(() => toast.classList.add('show'));
+      setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 250);
+      }, duration);
+    }
+
+    // ===== EIGENER BESTÄTIGUNGS-DIALOG (natives <dialog>, ersetzt confirm()) =====
+    function showConfirm(message) {
+      return new Promise((resolve) => {
+        const dialog = document.getElementById('confirmModal');
+        document.getElementById('confirmMessage').textContent = message;
+        const yesBtn = document.getElementById('confirmYesBtn');
+        const noBtn = document.getElementById('confirmNoBtn');
+
+        let settled = false;
+        function cleanup(result) {
+          if (settled) return;
+          settled = true;
+          yesBtn.removeEventListener('click', onYes);
+          noBtn.removeEventListener('click', onNo);
+          dialog.removeEventListener('cancel', onCancel);
+          dialog.close();
+          resolve(result);
+        }
+        function onYes() { cleanup(true); }
+        function onNo() { cleanup(false); }
+        // "cancel" feuert nativ bei der Escape-Taste - dialog schließt sich
+        // dann von allein, wir müssen nur noch das Promise auflösen.
+        function onCancel() { settled = true; resolve(false); }
+
+        yesBtn.addEventListener('click', onYes);
+        noBtn.addEventListener('click', onNo);
+        dialog.addEventListener('cancel', onCancel);
+        dialog.showModal();
+      });
+    }
+
+    // ===== WISCH-ZUM-LÖSCHEN =====
+    // rowEl: äußeres li (überflüssiges wird abgeschnitten), contentEl: der
+    // eigentliche, verschiebbare Inhalt, onDelete: async Funktion, die
+    // true/false zurückgibt, ob tatsächlich gelöscht werden soll.
+    function attachSwipeToDelete(rowEl, contentEl, onDelete) {
+      let startX = 0, startY = 0, currentX = 0, dragging = false, isHorizontal = null;
+      const threshold = 80;
+
+      contentEl.addEventListener('pointerdown', (e) => {
+        if (e.target.closest('button')) return;
+        startX = e.clientX; startY = e.clientY; currentX = 0; dragging = true; isHorizontal = null;
+        contentEl.style.transition = 'none';
+      });
+
+      contentEl.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        if (isHorizontal === null && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
+          isHorizontal = Math.abs(dx) > Math.abs(dy);
+        }
+        if (!isHorizontal) return;
+        currentX = Math.min(0, dx);
+        contentEl.style.transform = `translateX(${currentX}px)`;
+      });
+
+      const endDrag = async () => {
+        if (!dragging) return;
+        dragging = false;
+        contentEl.style.transition = 'transform .2s ease';
+        if (isHorizontal && currentX < -threshold) {
+          const proceed = await onDelete();
+          if (proceed === false) {
+            contentEl.style.transform = 'translateX(0)';
+          }
+          // bei Erfolg wird die Liste ohnehin neu gerendert
+        } else {
+          contentEl.style.transform = 'translateX(0)';
+        }
+      };
+
+      contentEl.addEventListener('pointerup', endDrag);
+      contentEl.addEventListener('pointercancel', endDrag);
+
+      // Zusätzlicher Lösch-Button für Zeigegeräte mit Hover (Maus/Trackpad):
+      // Auf Touchgeräten bleibt er per CSS unsichtbar, dort funktioniert
+      // weiterhin die Wisch-Geste; am Desktop erscheint er beim Hover über
+      // die Zeile als Alternative, ohne "wischen" zu müssen.
+      const hoverDeleteBtn = el('button', {
+        className: 'hover-delete-btn',
+        text: '🗑️',
+        onclick: async (e) => {
+          e.stopPropagation();
+          await onDelete();
+        }
+      });
+      hoverDeleteBtn.type = 'button';
+      hoverDeleteBtn.setAttribute('aria-label', 'Eintrag löschen');
+      contentEl.appendChild(hoverDeleteBtn);
+    }
+
+    // ===== ZAHLEN-ANIMATION =====
+    function animateNumber(elNode, from, to, duration = 500) {
+      const start = performance.now();
+      function frame(now) {
+        const progress = Math.min((now - start) / duration, 1);
+        elNode.textContent = Math.round(from + (to - from) * progress);
+        if (progress < 1) requestAnimationFrame(frame);
+      }
+      requestAnimationFrame(frame);
+    }
+
+    // ===== WISCH-NAVIGATION ZWISCHEN DEN REITERN =====
+    // Wischen auf nicht-interaktiven Flächen (nicht auf Buttons, Inputs,
+    // Karten mit eigener Wisch-Löschfunktion o.ä.) wechselt den Reiter.
+    const PAGE_ORDER = ['dashboard', 'history', 'recipes', 'settings'];
+    const SWIPE_NAV_EXCLUDE = 'button, input, select, textarea, a, nav, .swipe-item, .stepper, .recipe-card, dialog, .scanner-overlay, .calorie-ring-wrap';
+
+    function navigateSwipe(direction) {
+      const activePage = document.querySelector('.page.active');
+      if (!activePage) return;
+      const currentName = activePage.id.replace('page', '').toLowerCase();
+      const idx = PAGE_ORDER.indexOf(currentName);
+      if (idx === -1) return;
+      const nextIdx = idx + direction;
+      if (nextIdx < 0 || nextIdx >= PAGE_ORDER.length) return;
+      switchPage(PAGE_ORDER[nextIdx]);
+    }
+
+    function attachPageSwipeNavigation() {
+      const container = document.querySelector('.container');
+      if (!container) return;
+      let startX = 0, startY = 0, dragging = false, isHorizontal = null;
+      const threshold = 70;
+
+      container.addEventListener('pointerdown', (e) => {
+        if (e.target.closest(SWIPE_NAV_EXCLUDE)) { dragging = false; return; }
+        startX = e.clientX; startY = e.clientY; dragging = true; isHorizontal = null;
+      });
+
+      container.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        if (isHorizontal === null && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) {
+          isHorizontal = Math.abs(dx) > Math.abs(dy) * 1.2;
+        }
+      });
+
+      const endSwipe = (e) => {
+        if (!dragging) return;
+        dragging = false;
+        if (isHorizontal) {
+          const dx = e.clientX - startX;
+          if (Math.abs(dx) > threshold) {
+            navigateSwipe(dx < 0 ? 1 : -1);
+          }
+        }
+      };
+
+      container.addEventListener('pointerup', endSwipe);
+      container.addEventListener('pointercancel', endSwipe);
+    }
+
+    // Bindet alle change/input-Handler, die zuvor als Inline-Attribute
+    // (onchange/oninput) im HTML standen.
+    function attachFormListeners() {
+      document.getElementById('imageInputCamera').addEventListener('change', function () { handleImageSelected(this); });
+      document.getElementById('imageInputGallery').addEventListener('change', function () { handleImageSelected(this); });
+      document.getElementById('weekMacroToggle').addEventListener('change', renderWeekChart);
+      document.getElementById('recipeSearchInput').addEventListener('input', renderRecipeLibrary);
+      document.getElementById('recipeFilterMealType').addEventListener('change', renderRecipeLibrary);
+      document.getElementById('recipeFilterMaxCalories').addEventListener('input', renderRecipeLibrary);
+      document.getElementById('darkModeToggle').addEventListener('change', toggleDarkMode);
+    }
+
+    window.addEventListener('DOMContentLoaded', async () => {
+      if(localStorage.getItem('gemini_api_key')) {
+        document.getElementById('geminiKeyInput').value = localStorage.getItem('gemini_api_key');
+      }
+      if(localStorage.getItem('firebase_config')) {
+        document.getElementById('firebaseConfigInput').value = localStorage.getItem('firebase_config');
+      }
+
+      document.getElementById('calorieLimitInput').value = getCalorieLimit();
+      initTheme();
+      attachFormListeners();
+
+      if (window.loadDataFromCloud) {
+        const cloudResult = await window.loadDataFromCloud();
+        if (cloudResult && cloudResult.calorie_data) {
+          const localTs = localStorage.getItem(LOCAL_TS_KEY);
+          const cloudTs = cloudResult.updatedAt;
+          const cloudIsNewer = !localTs || (cloudTs && new Date(cloudTs) > new Date(localTs));
+          if (cloudIsNewer) {
+            allData = cloudResult.calorie_data;
+            if (!allData[TODAY_KEY]) allData[TODAY_KEY] = [];
+            localStorage.setItem('user_calorie_data', JSON.stringify(allData));
+            if (cloudTs) localStorage.setItem(LOCAL_TS_KEY, cloudTs);
+
+            if (cloudResult.saved_recipes) {
+              savedRecipes = cloudResult.saved_recipes;
+              localStorage.setItem(RECIPES_KEY, JSON.stringify(savedRecipes));
+            }
+          }
+        }
+      }
+
+      updateDashboard();
+      attachPageSwipeNavigation();
+
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js').catch(err => {
+          console.warn('Service Worker konnte nicht registriert werden:', err);
+        });
+      }
+    });
+
+    function switchPage(pageName) {
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('nav.bottom-nav button').forEach(b => b.classList.remove('active'));
+      document.getElementById('settingsBtn').classList.remove('active');
+
+      if (pageName === 'dashboard') {
+        document.getElementById('pageDashboard').classList.add('active');
+        document.getElementById('navDashboard').classList.add('active');
+      } else if (pageName === 'history') {
+        document.getElementById('pageHistory').classList.add('active');
+        document.getElementById('navHistory').classList.add('active');
+        renderHistory();
+        renderWeekChart();
+      } else if (pageName === 'recipes') {
+        document.getElementById('pageRecipes').classList.add('active');
+        document.getElementById('navRecipes').classList.add('active');
+        renderRecipeLibrary();
+      } else if (pageName === 'settings') {
+        document.getElementById('pageSettings').classList.add('active');
+        document.getElementById('settingsBtn').classList.add('active');
+      }
+    }
+
+    // ===== DARK MODE =====
+    function applyTheme(mode) {
+      document.body.classList.toggle('dark', mode === 'dark');
+    }
+
+    function initTheme() {
+      const saved = localStorage.getItem(THEME_KEY) || 'light';
+      applyTheme(saved);
+      document.getElementById('darkModeToggle').checked = saved === 'dark';
+    }
+
+    function toggleDarkMode() {
+      const mode = document.getElementById('darkModeToggle').checked ? 'dark' : 'light';
+      localStorage.setItem(THEME_KEY, mode);
+      applyTheme(mode);
+    }
+
+    // ===== KALORIENLIMIT =====
+    function getCalorieLimit() {
+      return Number(localStorage.getItem(CALORIE_LIMIT_KEY)) || DEFAULT_CALORIE_LIMIT;
+    }
+
+    function getMacroTargets() {
+      const limit = getCalorieLimit();
+      return {
+        protein: Math.round((limit * 0.25) / 4),
+        carbs: Math.round((limit * 0.45) / 4),
+        fat: Math.round((limit * 0.30) / 9)
+      };
+    }
+
+    function saveCalorieLimit() {
+      const val = Number(document.getElementById('calorieLimitInput').value);
+      if (!val || val <= 0) {
+        showToast('Bitte ein gültiges Kalorienlimit eingeben.', 'error');
+        return;
+      }
+      localStorage.setItem(CALORIE_LIMIT_KEY, val);
+      showToast('Kalorienlimit gespeichert!', 'success');
+      updateDashboard();
+    }
+
+    function persistData() {
+      const ts = new Date().toISOString();
+      localStorage.setItem('user_calorie_data', JSON.stringify(allData));
+      localStorage.setItem(LOCAL_TS_KEY, ts);
+      if (window.saveDataToCloud) {
+        window.saveDataToCloud(allData);
+      }
+      updateDashboard();
+    }
+
+    function dayTotals(dateKey) {
+      const meals = allData[dateKey] || [];
+      return meals.reduce((acc, m) => {
+        acc.calories += m.calories || 0;
+        acc.protein += m.protein || 0;
+        acc.carbs += m.carbs || 0;
+        acc.fat += m.fat || 0;
+        return acc;
+      }, { calories: 0, protein: 0, carbs: 0, fat: 0 });
+    }
+
+    function updateCalorieRing(totalCals, limit) {
+      const ring = document.getElementById('calorieRingProgress');
+      const radius = 72;
+      const circumference = 2 * Math.PI * radius;
+      const pct = Math.min(totalCals / limit, 1);
+      ring.style.strokeDasharray = `${circumference} ${circumference}`;
+      ring.style.strokeDashoffset = circumference - pct * circumference;
+
+      let color = '#10b981';
+      if (totalCals / limit >= 1) color = '#ef4444';
+      else if (totalCals / limit >= 0.8) color = '#eab308';
+      ring.style.stroke = color;
+    }
+
+    function computeStreak() {
+      const limit = getCalorieLimit();
+      let streak = 0;
+      const cursor = new Date();
+      cursor.setDate(cursor.getDate() - 1); // heute läuft noch, ab gestern zählen
+      for (let i = 0; i < 3650; i++) {
+        const key = cursor.toISOString().split('T')[0];
+        const meals = allData[key];
+        if (!meals || meals.length === 0) break;
+        if (dayTotals(key).calories > limit) break;
+        streak++;
+        cursor.setDate(cursor.getDate() - 1);
+      }
+      return streak;
+    }
+
+    // Zeigt die Serie an und lässt Icon/Zahl mit der Länge der Serie
+    // graduell größer werden (Tag 1 bis 10, danach keine weitere Steigerung).
+    function updateStreakDisplay(streak) {
+      const iconEl = document.getElementById('streakIcon');
+      const valueEl = document.getElementById('streakValue');
+      const clamped = Math.min(Math.max(streak, 0), 10);
+      const growth = clamped / 10; // 0 bis 1
+
+      iconEl.style.fontSize = (1.4 + growth * 1.4) + 'rem';   // 1.4rem -> 2.8rem
+      valueEl.style.fontSize = (0.85 + growth * 0.65) + 'rem'; // 0.85rem -> 1.5rem
+      valueEl.textContent = streak + (streak === 1 ? ' Tag' : ' Tage');
+    }
+
+    // Springt zu den heutigen Mahlzeiten (Klick auf den Kalorien-Ring).
+    function scrollToMealList() {
+      const target = document.getElementById('mealList');
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    // ===== ZEITBASIERTE MAHLZEITEN-GRUPPIERUNG =====
+    // Typische Uhrzeiten für Frühstück/Mittag/Abendessen (24h-Format,
+    // Dezimalstunden). Alles außerhalb dieser Fenster gilt als Snack.
+    const MEAL_TIME_WINDOWS = {
+      breakfast: { start: 6, end: 10 },
+      lunch: { start: 11.5, end: 14 },
+      dinner: { start: 17.5, end: 20.5 }
+    };
+    const MEAL_GROUP_WINDOW_MS = 60 * 60 * 1000; // ca. 1 Stunde
+
+    function classifyMealTime(date) {
+      const hourFrac = date.getHours() + date.getMinutes() / 60;
+      for (const type of Object.keys(MEAL_TIME_WINDOWS)) {
+        const w = MEAL_TIME_WINDOWS[type];
+        if (hourFrac >= w.start && hourFrac <= w.end) return type;
+      }
+      return 'snack';
+    }
+
+    // Fasst Einträge, die innerhalb von ca. 1 Stunde nacheinander erfasst
+    // wurden (Zeitstempel steckt in item.id), zu einer gemeinsamen
+    // "Mahlzeit" zusammen. Gibt eine Liste von Gruppen zurück, jede mit
+    // Summen-Nährwerten, Original-Indizes (für Löschen) und einem
+    // Mahlzeit-Typ, der von der Uhrzeit der Gruppe abgeleitet wird.
+    function groupMealsByTime(meals) {
+      const withIndex = meals
+        .map((item, index) => ({ item, index }))
+        .sort((a, b) => a.item.id - b.item.id);
+
+      const rawGroups = [];
+      withIndex.forEach(entry => {
+        const last = rawGroups[rawGroups.length - 1];
+        if (last && (entry.item.id - last[last.length - 1].item.id) <= MEAL_GROUP_WINDOW_MS) {
+          last.push(entry);
+        } else {
+          rawGroups.push([entry]);
+        }
+      });
+
+      return rawGroups.map(group => {
+        const totals = group.reduce((acc, e) => {
+          acc.calories += e.item.calories || 0;
+          acc.protein += e.item.protein || 0;
+          acc.carbs += e.item.carbs || 0;
+          acc.fat += e.item.fat || 0;
+          return acc;
+        }, { calories: 0, protein: 0, carbs: 0, fat: 0 });
+
+        const firstTime = new Date(group[0].item.id);
+        return {
+          mealType: classifyMealTime(firstTime),
+          timeLabel: firstTime.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }),
+          names: group.map(e => e.item.name),
+          indices: group.map(e => e.index),
+          totals
+        };
+      });
+    }
+
+    // Zeigt die einzelnen Bestandteile einer gruppierten Mahlzeit als
+    // separate Tags statt als ein zusammenhängender, mit Komma getrennter
+    // Fließtext – dadurch bleiben mehrere Zutaten optisch klar getrennt.
+    function renderMealNameTags(names) {
+      const wrap = el('div', { className: 'meal-items-list' });
+      names.forEach(name => {
+        wrap.appendChild(el('span', { className: 'meal-item-tag', text: name }));
+      });
+      return wrap;
+    }
+
+    function updateDashboard() {
+      const todayMeals = allData[TODAY_KEY] || [];
+      const totals = dayTotals(TODAY_KEY);
+      const limit = getCalorieLimit();
+      const targets = getMacroTargets();
+
+      const mealListEl = document.getElementById('mealList');
+      mealListEl.innerHTML = '';
+
+      if (todayMeals.length === 0) {
+        const emptyLi = document.createElement('li');
+        emptyLi.style.borderBottom = 'none';
+        const emptyState = el('div', { className: 'empty-state' });
+        emptyState.appendChild(el('span', { className: 'empty-icon', text: '🍽️' }));
+        const emptyText = el('span', { className: 'empty-text' });
+        emptyText.append('Noch keine Mahlzeit erfasst.', document.createElement('br'), 'Nutze Foto-Analyse, Rezept oder Produktsuche.');
+        emptyState.appendChild(emptyText);
+        emptyLi.appendChild(emptyState);
+        mealListEl.appendChild(emptyLi);
+      } else {
+        const groups = groupMealsByTime(todayMeals);
+        groups.forEach(group => {
+          const li = document.createElement('li');
+          li.className = 'swipe-item';
+
+          const deleteBg = el('div', { className: 'swipe-delete-bg', text: 'Löschen' });
+
+          const content = el('div', { className: 'swipe-content meal-row' });
+          const infoDiv = el('div');
+
+          const titleLine = el('div', { style: { display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.15rem' } });
+          titleLine.appendChild(el('span', { className: 'meal-badge', text: getMealTypeLabel(group.mealType) }));
+          titleLine.appendChild(el('span', { text: group.timeLabel, style: { fontSize: '0.75rem', color: 'var(--text-muted)' } }));
+          infoDiv.appendChild(titleLine);
+
+          infoDiv.appendChild(renderMealNameTags(group.names));
+          const macroText = `${group.totals.calories} kcal | P: ${group.totals.protein}g K: ${group.totals.carbs}g F: ${group.totals.fat}g`
+            + (group.indices.length > 1 ? ` · ${group.indices.length} Einträge zusammengefasst` : '');
+          infoDiv.appendChild(el('small', { text: macroText, style: { color: 'var(--text-muted)' } }));
+          content.appendChild(infoDiv);
+
+          li.appendChild(deleteBg);
+          li.appendChild(content);
+          mealListEl.appendChild(li);
+
+          attachSwipeToDelete(li, content, async () => {
+            // Alle Einträge dieser Gruppe entfernen (absteigend sortiert,
+            // damit sich Indizes beim Splicen nicht verschieben)
+            [...group.indices].sort((a, b) => b - a).forEach(idx => {
+              allData[TODAY_KEY].splice(idx, 1);
+            });
+            persistData();
+            return true;
+          });
+        });
+      }
+
+      const calEl = document.getElementById('totalCalories');
+      const prevCals = Number(calEl.textContent) || 0;
+      animateNumber(calEl, prevCals, totals.calories);
+
+      document.getElementById('totalProtein').innerText = totals.protein + 'g';
+      document.getElementById('totalCarbs').innerText = totals.carbs + 'g';
+      document.getElementById('totalFat').innerText = totals.fat + 'g';
+      document.getElementById('calorieLimitDisplay').innerText = limit;
+
+      document.getElementById('proteinBar').style.width = Math.min((totals.protein / targets.protein) * 100, 100) + '%';
+      document.getElementById('carbsBar').style.width = Math.min((totals.carbs / targets.carbs) * 100, 100) + '%';
+      document.getElementById('fatBar').style.width = Math.min((totals.fat / targets.fat) * 100, 100) + '%';
+
+      updateCalorieRing(totals.calories, limit);
+      updateStreakDisplay(computeStreak());
+
+      renderWeekChart();
+    }
+
+    // ===== WOCHENÜBERSICHT =====
+    function renderWeekChart() {
+      const container = document.getElementById('weekChart');
+      const legend = document.getElementById('weekMacroLegend');
+      const showMacros = document.getElementById('weekMacroToggle').checked;
+      legend.style.display = showMacros ? 'block' : 'none';
+      container.innerHTML = '';
+
+      const limit = getCalorieLimit();
+      const dateKeys = [];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        dateKeys.push(d.toISOString().split('T')[0]);
+      }
+
+      const dayTotalsValues = dateKeys.map(k => dayTotals(k));
+      const dayCalorieValues = dayTotalsValues.map(t => t.calories);
+      const maxVal = Math.max(limit, ...dayCalorieValues, 1);
+
+      dateKeys.forEach((dateKey, i) => {
+        const totals = dayTotalsValues[i];
+        const cals = totals.calories;
+        // Balkenhöhe bleibt immer die Kalorienmenge – Makros ändern nur die Farbe/Füllung
+        const pct = Math.max((cals / maxVal) * 100, cals > 0 ? 4 : 2);
+
+        const wrap = el('div', { className: 'week-bar-wrap' });
+        const valueLbl = el('div', { className: 'week-bar-value', text: cals > 0 ? cals : '' });
+
+        let bar;
+        if (showMacros) {
+          // Kalorien aus den Makros ableiten, um deren Anteil an der
+          // Balkenhöhe proportional darzustellen (P/K: 4 kcal/g, F: 9 kcal/g)
+          const pCal = totals.protein * 4;
+          const cCal = totals.carbs * 4;
+          const fCal = totals.fat * 9;
+          const macroCalSum = pCal + cCal + fCal;
+
+          bar = el('div', { className: 'week-bar-stacked' });
+          bar.title = `P: ${totals.protein}g · K: ${totals.carbs}g · F: ${totals.fat}g`;
+
+          if (macroCalSum > 0) {
+            bar.appendChild(el('div', { style: { flex: (pCal / macroCalSum) || 0, background: '#ef4444' } }));
+            bar.appendChild(el('div', { style: { flex: (cCal / macroCalSum) || 0, background: '#eab308' } }));
+            bar.appendChild(el('div', { style: { flex: (fCal / macroCalSum) || 0, background: '#10b981' } }));
+          } else {
+            bar.style.background = 'var(--border)';
+          }
+        } else {
+          bar = el('div', { className: 'week-bar' + (cals > limit ? ' over' : '') });
+        }
+        bar.style.height = pct + '%';
+
+        const isToday = dateKey === TODAY_KEY;
+        const dayLabel = new Date(dateKey + 'T00:00:00').toLocaleDateString('de-DE', { weekday: 'short' });
+        const label = el('div', {
+          className: 'week-bar-label',
+          text: dayLabel,
+          style: isToday ? { color: 'var(--primary)', fontWeight: '700' } : {}
+        });
+
+        wrap.appendChild(valueLbl);
+        wrap.appendChild(bar);
+        wrap.appendChild(label);
+        container.appendChild(wrap);
+      });
+    }
+
+    function renderHistory() {
+      const historyListEl = document.getElementById('historyList');
+      historyListEl.innerHTML = '';
+
+      const sortedDates = Object.keys(allData).sort().reverse().filter(d => (allData[d] || []).length > 0);
+
+      if (sortedDates.length === 0) {
+        const emptyLi = document.createElement('li');
+        emptyLi.style.borderBottom = 'none';
+        const emptyState = el('div', { className: 'empty-state' });
+        emptyState.appendChild(el('span', { className: 'empty-icon', text: '📜' }));
+        emptyState.appendChild(el('span', { className: 'empty-text', text: 'Noch keine Verlaufsdaten vorhanden.' }));
+        emptyLi.appendChild(emptyState);
+        historyListEl.appendChild(emptyLi);
+        return;
+      }
+
+      sortedDates.forEach(date => {
+        const totals = dayTotals(date);
+        const meals = allData[date];
+        const groups = groupMealsByTime(meals);
+
+        const li = document.createElement('li');
+        li.style.display = 'block';
+        li.style.padding = '0.75rem 0';
+
+        // Als <button> statt klickbarem <div>, damit die Karte per Tastatur
+        // fokussierbar und für Screenreader als Steuerelement erkennbar ist.
+        const card = el('button', { className: 'history-card history-card-toggle' });
+        card.type = 'button';
+        card.setAttribute('aria-expanded', 'false');
+
+        const summary = el('div', { className: 'history-card-summary' });
+        const infoDiv = el('div');
+        infoDiv.appendChild(el('strong', { text: date }));
+        infoDiv.appendChild(document.createElement('br'));
+        infoDiv.appendChild(el('small', {
+          text: `${groups.length} Mahlzeit(en) · P: ${totals.protein}g K: ${totals.carbs}g F: ${totals.fat}g`,
+          style: { color: 'var(--text-muted)' }
+        }));
+
+        const rightWrap = el('div', { style: { textAlign: 'right' } });
+        rightWrap.appendChild(el('span', { text: `${totals.calories} kcal`, style: { fontWeight: 'bold', color: 'var(--primary)', display: 'block' } }));
+        rightWrap.appendChild(el('span', { className: 'history-expand-hint', text: 'antippen für Details' }));
+
+        summary.appendChild(infoDiv);
+        summary.appendChild(rightWrap);
+
+        const details = el('div', { className: 'history-card-details' });
+        groups.forEach(group => {
+          const row = el('div', { className: 'history-meal-row' });
+          const nameWrap = el('div');
+          const titleLine = el('div', { style: { display: 'flex', alignItems: 'center', gap: '0.4rem' } });
+          titleLine.appendChild(el('span', { className: 'meal-badge', text: getMealTypeLabel(group.mealType) }));
+          titleLine.appendChild(el('span', { text: group.timeLabel, style: { fontSize: '0.7rem', color: 'var(--text-muted)' } }));
+          nameWrap.appendChild(titleLine);
+          nameWrap.appendChild(renderMealNameTags(group.names));
+
+          const macroEl = el('div', {
+            text: `${group.totals.calories} kcal | P: ${group.totals.protein}g K: ${group.totals.carbs}g F: ${group.totals.fat}g`,
+            style: { color: 'var(--text-muted)', fontSize: '0.8rem', textAlign: 'right' }
+          });
+          row.appendChild(nameWrap);
+          row.appendChild(macroEl);
+          details.appendChild(row);
+        });
+
+        card.appendChild(summary);
+        card.appendChild(details);
+        card.addEventListener('click', () => {
+          const expanded = card.classList.toggle('expanded');
+          card.setAttribute('aria-expanded', String(expanded));
+        });
+
+        li.appendChild(card);
+        historyListEl.appendChild(li);
+      });
+    }
+
+    function saveGeminiKey() {
+      const key = document.getElementById('geminiKeyInput').value.trim();
+      localStorage.setItem('gemini_api_key', key);
+      showToast('Gemini API Key gespeichert!', 'success');
+    }
+
+    function saveFirebaseConfig() {
+      const configStr = document.getElementById('firebaseConfigInput').value.trim();
+      try {
+        JSON.parse(configStr);
+        localStorage.setItem('firebase_config', configStr);
+        showToast('Firebase Konfiguration gespeichert! Seite wird neu geladen.', 'success');
+        setTimeout(() => location.reload(), 900);
+      } catch (e) {
+        showToast('Ungültiges JSON-Format in der Firebase Konfiguration!', 'error');
+      }
+    }
+
+    // GEMINI generateContent API-AUFRUF (TEXT UND OPTIONAL BILD)
+    async function callGeminiInteractions(textPrompt, imageBase64 = null, mimeType = null) {
+      const apiKey = localStorage.getItem("gemini_api_key");
+      if (!apiKey) {
+        showToast("Bitte gib zuerst einen Gemini API Key in den Einstellungen ein!", 'error');
+        return null;
+      }
+
+      const MODEL_ATTEMPTS = [
+        "gemini-3.8-flash",
+        "gemini-3.8-flash",
+        "gemini-3.5-flash",
+        "gemini-3.5-flash",
+        "gemini-3.1-flash-lite"
+      ];
+
+      const parts = [{ text: textPrompt }];
+      if (imageBase64) {
+        parts.push({
+          inlineData: {
+            mimeType: mimeType || "image/jpeg",
+            data: imageBase64
+          }
+        });
+      }
+
+      let response, data;
+
+      for (let attempt = 0; attempt < MODEL_ATTEMPTS.length; attempt++) {
+        const model = MODEL_ATTEMPTS[attempt];
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+        try {
+          response = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ contents: [{ parts }] })
+          });
+        } catch (e) {
+          showToast("Netzwerkfehler bei der Kommunikation mit der Gemini API.", 'error');
+          return null;
+        }
+
+        const isLastAttempt = attempt === MODEL_ATTEMPTS.length - 1;
+        if ((response.status === 503 || response.status === 429) && !isLastAttempt) {
+          await new Promise(resolve => setTimeout(resolve, 800));
+          continue;
+        }
+        break;
+      }
+
+      try {
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          showToast(`API Fehler (${response.status}): ${errData.error?.message || 'Ungültige Anfrage'}`, 'error');
+          return null;
+        }
+
+        data = await response.json();
+        const textContent = data.candidates
+          ?.flatMap(c => c.content?.parts || [])
+          ?.filter(p => p.text)
+          ?.map(p => p.text)
+          ?.join("\n");
+
+        if (textContent) return textContent;
+
+        showToast("Keine gültige Textantwort von der API erhalten.", 'error');
+        return null;
+      } catch (e) {
+        showToast("Netzwerkfehler bei der Kommunikation mit der Gemini API.", 'error');
+        return null;
+      }
+    }
+
+    // ===== KI-BEWERTUNG DES TAGES =====
+    async function evaluateDayWithAI() {
+      const output = document.getElementById('dayEvaluationOutput');
+      const meals = allData[TODAY_KEY] || [];
+
+      if (meals.length === 0) {
+        showToast('Noch keine Mahlzeiten erfasst – es gibt nichts zu bewerten.', 'error');
+        return;
+      }
+
+      const totals = dayTotals(TODAY_KEY);
+      const limit = getCalorieLimit();
+      const mealListText = meals.map(m => `- ${m.name}: ${m.calories} kcal (P: ${m.protein}g, K: ${m.carbs}g, F: ${m.fat}g)`).join('\n');
+
+      output.innerHTML = '<span class="spinner"></span>KI bewertet deinen Tag...';
+
+      const prompt = `Bewerte kurz und konstruktiv die bisherige Ernährung dieser Person für heute.
+
+Tageslimit: ${limit} kcal
+Bisher verzehrt: ${totals.calories} kcal (Eiweiß: ${totals.protein}g, Kohlenhydrate: ${totals.carbs}g, Fett: ${totals.fat}g)
+Erfasste Mahlzeiten:
+${mealListText}
+
+Gib eine kurze Einschätzung (max. 4-5 Sätze, normaler Fließtext, KEIN JSON, KEIN Markdown, keine Überschriften) zu:
+- Ob die Makroverteilung ausgewogen wirkt
+- Ob die Kalorienbilanz zum Tageslimit passt
+- Ob die Mahlzeiten eher blutzuckerstabil (Ballaststoffe/Eiweiß) oder eher ungünstig wirken
+- Einen konkreten, freundlichen Tipp für den Rest des Tages`;
+
+      const responseText = await callGeminiInteractions(prompt);
+      if (!responseText) { output.innerText = ''; return; }
+
+      output.innerText = responseText;
+    }
+
+    // BILD-ANALYSE FUNKTION
+    let selectedImageFile = null;
+
+    // Wird von beiden Datei-Inputs (Kamera & Galerie) aufgerufen, sobald
+    // ein Bild ausgewählt wurde.
+    function handleImageSelected(inputEl) {
+      const file = inputEl.files[0];
+      if (!file) return;
+      selectedImageFile = file;
+      document.getElementById('selectedImagePreview').textContent = `📎 Ausgewählt: ${file.name}`;
+    }
+
+    function resetImageSelection() {
+      selectedImageFile = null;
+      document.getElementById('selectedImagePreview').textContent = '';
+      document.getElementById('imageInputCamera').value = '';
+      document.getElementById('imageInputGallery').value = '';
+      document.getElementById('mealDescriptionInput').value = '';
+    }
+
+    // Baut den passenden Analyse-Prompt je nachdem, ob ein Foto, eine
+    // Textbeschreibung oder beides vorliegt. Bei Kombination hilft die
+    // Beschreibung der KI, Mengen/Zutaten auf dem Foto besser einzuordnen.
+    function buildMealAnalysisPrompt(hasImage, description) {
+      const jsonFormat = `{
+  "name": "Name des Gerichts",
+  "feedback": "Erklärung zur Schätzung",
+  "estimated_grams": 0,
+  "calories": 0,
+  "protein": 0,
+  "carbs": 0,
+  "fat": 0
+}`;
+
+      if (hasImage && description) {
+        return `Analysiere dieses Essen anhand des Fotos. Nutze zusätzlich diese Beschreibung der Person zur besseren Einordnung von Menge und Zutaten: "${description}".
+Schätze zunächst das Gewicht der Portion in Gramm. Schätze anschließend die Kalorien und Makronährstoffe (Eiweiß, Kohlenhydrate, Fett) für GENAU diese geschätzte Portion (nicht pro 100g).
+Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown:
+${jsonFormat}`;
+      }
+
+      if (hasImage) {
+        return `Analysiere dieses Essen. Schätze zunächst das Gewicht der abgebildeten Portion in Gramm. Schätze anschließend die Kalorien und Makronährstoffe (Eiweiß, Kohlenhydrate, Fett) für GENAU diese geschätzte Portion (nicht pro 100g).
+Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown:
+${jsonFormat}`;
+      }
+
+      return `Ein Nutzer beschreibt sein Essen so: "${description}".
+Schätze anhand dieser Beschreibung eine realistische Portionsgröße in Gramm (falls die Menge nicht genannt wird, nimm eine übliche Portionsgröße an) sowie die Kalorien und Makronährstoffe (Eiweiß, Kohlenhydrate, Fett) für GENAU diese Portion.
+Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown:
+${jsonFormat}`;
+    }
+
+    // Verarbeitet die Gemini-Antwort einheitlich für Foto- und/oder
+    // Text-Analyse und zeigt bei Erfolg die anpassbare Mengen-Vorschau.
+    function handleMealAnalysisResponse(responseText, output) {
+      if (!responseText) { output.innerText = ''; return; }
+      try {
+        const result = extractJson(responseText);
+        if (!result.name) {
+          throw new Error('Antwort enthält nicht die erwarteten Felder.');
+        }
+        // Nicht direkt übernehmen: erst Mengen-Vorschau zeigen, damit die
+        // Menge in 20g-Schritten korrigiert werden kann, bevor bestätigt wird.
+        renderMealAnalysisPreview(result, output);
+      } catch (err) {
+        output.innerText = "Antwort erhalten, aber JSON konnte nicht gelesen werden:\n" + responseText;
+      }
+    }
+
+    async function analyzeMeal() {
+      const output = document.getElementById('imageAnalysisOutput');
+      const description = document.getElementById('mealDescriptionInput').value.trim();
+
+      if (!selectedImageFile && !description) {
+        showToast("Bitte ein Foto auswählen oder dein Essen kurz beschreiben.", 'error');
+        return;
+      }
+
+      output.innerHTML = '<span class="spinner"></span>Analysiere Essen mit KI...';
+
+      if (selectedImageFile) {
+        const reader = new FileReader();
+        reader.onload = async function() {
+          const base64Data = reader.result.split(',')[1];
+          const mimeType = selectedImageFile.type;
+          const prompt = buildMealAnalysisPrompt(true, description);
+          const responseText = await callGeminiInteractions(prompt, base64Data, mimeType);
+          handleMealAnalysisResponse(responseText, output);
+        };
+        reader.readAsDataURL(selectedImageFile);
+      } else {
+        const prompt = buildMealAnalysisPrompt(false, description);
+        const responseText = await callGeminiInteractions(prompt);
+        handleMealAnalysisResponse(responseText, output);
+      }
+    }
+
+    // Zeigt das KI-Analyseergebnis als Vorschau mit anpassbarer Menge
+    // (20g-Schritte). Nährwerte werden dabei live aus den vom Modell für
+    // die geschätzte Portion gelieferten Werten pro Gramm umgerechnet.
+    // Erst der Klick auf "So übernehmen" trägt den Eintrag ins Tagebuch ein.
+    function renderMealAnalysisPreview(result, container) {
+      const estimatedGrams = Number(result.estimated_grams) > 0 ? Number(result.estimated_grams) : 100;
+      const totalCals = Number(result.calories) || 0;
+      const totalProt = Number(result.protein) || 0;
+      const totalCarb = Number(result.carbs) || 0;
+      const totalFat = Number(result.fat) || 0;
+
+      const perGram = {
+        cal: totalCals / estimatedGrams,
+        prot: totalProt / estimatedGrams,
+        carb: totalCarb / estimatedGrams,
+        fat: totalFat / estimatedGrams
+      };
+
+      container.innerHTML = '';
+      const card = el('div', { className: 'product-result' });
+
+      card.appendChild(el('div', { className: 'product-title', text: `📸 ${result.name}` }));
+      if (result.feedback) {
+        card.appendChild(el('div', { text: result.feedback, style: { fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.2rem' } }));
+      }
+
+      const macroLine = el('div', { className: 'product-macros' });
+      card.appendChild(macroLine);
+
+      card.appendChild(el('label', {
+        text: `KI-Schätzung: ${estimatedGrams}g – bei Bedarf in 20g-Schritten anpassen:`,
+        style: { fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.6rem', display: 'block' }
+      }));
+
+      const { wrap: stepperWrap, input: gramsInput } = createGramStepper(estimatedGrams, 20);
+      card.appendChild(stepperWrap);
+
+      function currentValues() {
+        const grams = Math.max(1, Number(gramsInput.value) || 0);
+        const cals = Math.round(perGram.cal * grams);
+        const prot = Math.round(perGram.prot * grams);
+        const carb = Math.round(perGram.carb * grams);
+        const fat = Math.round(perGram.fat * grams);
+        macroLine.textContent = `${cals} kcal | P: ${prot}g K: ${carb}g F: ${fat}g (bei ${grams}g)`;
+        return { grams, cals, prot, carb, fat };
+      }
+      currentValues();
+      gramsInput.addEventListener('input', currentValues);
+
+      const confirmBtn = el('button', {
+        text: '✅ So ins Tagebuch übernehmen',
+        className: 'btn-primary',
+        style: { marginTop: '0.6rem' },
+        onclick: () => {
+          const final = currentValues();
+          allData[TODAY_KEY].push({
+            id: Date.now(),
+            name: `📸 ${result.name} (${final.grams}g)`,
+            calories: final.cals,
+            protein: final.prot,
+            carbs: final.carb,
+            fat: final.fat
+          });
+          persistData();
+          showToast(`"${result.name}" wurde zu den heutigen Mahlzeiten hinzugefügt!`, 'success');
+          container.innerHTML = '';
+          resetImageSelection();
+        }
+      });
+      confirmBtn.type = 'button';
+      card.appendChild(confirmBtn);
+
+      container.appendChild(card);
+    }
+
+    // REZEPT GENERATION
+    function extractJson(text) {
+      const cleaned = text.replace(/```json|```/g, '').trim();
+      const start = cleaned.indexOf('{');
+      const end = cleaned.lastIndexOf('}');
+      if (start === -1 || end === -1 || end < start) {
+        throw new Error('Kein JSON-Objekt in der Antwort gefunden.');
+      }
+      return JSON.parse(cleaned.slice(start, end + 1));
+    }
+
+    async function generateRecipe() {
+      const ingredients = document.getElementById('recipeIngredients').value.trim();
+      const mealType = document.getElementById('recipeMealType').value;
+      const allowExtra = document.getElementById('allowExtraIngredients').checked;
+      const output = document.getElementById('recipeOutput');
+      const addBtn = document.getElementById('addRecipeBtn');
+      const saveOnlyBtn = document.getElementById('saveRecipeOnlyBtn');
+
+      if (!ingredients) {
+        showToast("Bitte gib ein paar Zutaten ein.", 'error');
+        return;
+      }
+
+      output.innerHTML = '<span class="spinner"></span>Erstelle Rezept mit KI...';
+      addBtn.style.display = 'none';
+      saveOnlyBtn.style.display = 'none';
+      currentGeneratedRecipe = null;
+      currentRecipeSavedId = null;
+
+      const mealInfo = MEAL_TYPES[mealType];
+      const limit = getCalorieLimit();
+      const consumedToday = dayTotals(TODAY_KEY).calories;
+      const remaining = limit - consumedToday;
+      const mealShareTarget = Math.round(limit * mealInfo.share);
+      const targetCalories = remaining > 0 ? Math.min(mealShareTarget, remaining) : mealShareTarget;
+
+      const ingredientsInstruction = allowExtra
+        ? `Die genannten Zutaten sind nur ein Teil der benötigten Zutaten und müssen nicht vollständig sein. Du darfst weitere übliche Haushalts-/Grundzutaten ergänzen (z.B. Gewürze, Öl, Zwiebeln, Knoblauch, Mehl), wenn das Rezept dadurch sinnvoller oder vollständiger wird. Nenne alle zusätzlich benötigten Zutaten in der Anleitung.`
+        : `Nutze ausschließlich die genannten Zutaten (Wasser, Salz, Pfeffer und etwas Öl als Basis sind erlaubt).`;
+
+      const budgetContext = remaining <= 0
+        ? `Der Nutzer hat sein Tageslimit von ${limit} kcal bereits um ca. ${Math.abs(remaining)} kcal überschritten. Halte diese Mahlzeit deshalb möglichst kalorienarm und leicht, deutlich unter dem sonst üblichen Richtwert für "${mealInfo.label}" von ca. ${mealShareTarget} kcal.`
+        : `Tageslimit ${limit} kcal, heute bereits verzehrt ${consumedToday} kcal, verbleibend ca. ${remaining} kcal. Für eine Mahlzeit vom Typ "${mealInfo.label}" ist ein Richtwert von ca. ${targetCalories} kcal sinnvoll. Halte dich an diesen Richtwert und überschreite das verbleibende Tageslimit möglichst nicht deutlich.`;
+
+      const prompt = `Erstelle ein kurzes Rezept für die Mahlzeit "${mealInfo.label}" aus folgenden Zutaten: ${ingredients}.
+${ingredientsInstruction}
+
+Kalorien-Kontext: ${budgetContext}
+
+Achte zusätzlich auf blutzuckerstabile Ernährung:
+- Kombiniere Kohlenhydrate immer mit ausreichend Ballaststoffen, Eiweiß und/oder gesunden Fetten
+- Bevorzuge Vollkorn/komplexe Kohlenhydrate statt raffiniertem Zucker oder Weißmehl
+- Vermeide große Mengen isolierter, schnell resorbierbarer Kohlenhydrate
+
+Schätze die Nährwerte für eine Portion.
+Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown:
+{
+  "name": "Rezeptname",
+  "instructions": "Kurze Anleitung zur Zubereitung",
+  "calories": 0,
+  "protein": 0,
+  "carbs": 0,
+  "fat": 0
+}`;
+
+      const responseText = await callGeminiInteractions(prompt);
+      if (!responseText) { output.innerText = ''; return; }
+
+      try {
+        const recipe = extractJson(responseText);
+
+        if (!recipe.name || !recipe.instructions) {
+          throw new Error('Antwort enthält nicht die erwarteten Rezeptfelder.');
+        }
+
+        const cals = Number(recipe.calories) || 0;
+        const prot = Number(recipe.protein) || 0;
+        const carb = Number(recipe.carbs) || 0;
+        const fat = Number(recipe.fat) || 0;
+
+        currentGeneratedRecipe = {
+          name: recipe.name,
+          instructions: recipe.instructions,
+          calories: cals,
+          protein: prot,
+          carbs: carb,
+          fat: fat,
+          mealType: mealType,
+          ingredientsUsed: ingredients
+        };
+        currentRecipeSavedId = null;
+
+        const overBudget = remaining > 0 && cals > remaining;
+        const budgetNote = overBudget ? `\n⚠️ Liegt über deinem verbleibenden Tageslimit (${remaining} kcal).` : '';
+
+        output.innerText = `🍳 ${recipe.name} (${mealInfo.icon} ${mealInfo.label})\n\n📝 Anleitung:\n${recipe.instructions}\n\n📊 Nährwerte: ${cals} kcal | P: ${prot}g | K: ${carb}g | F: ${fat}g${budgetNote}\n\n💡 Noch nicht gespeichert – wähle unten eine Aktion.`;
+        addBtn.style.display = 'block';
+        saveOnlyBtn.style.display = 'block';
+      } catch (err) {
+        output.innerText = "Die KI-Antwort konnte nicht als Rezept gelesen werden. Versuche es mit anderen/weniger Zutaten erneut:\n\n" + responseText;
+      }
+    }
+
+    function ensureRecipeSaved() {
+      if (currentRecipeSavedId) return currentGeneratedRecipe;
+      const saved = saveRecipeToLibrary(currentGeneratedRecipe, currentGeneratedRecipe.mealType, currentGeneratedRecipe.ingredientsUsed);
+      currentRecipeSavedId = saved.id;
+      currentGeneratedRecipe = saved;
+      return saved;
+    }
+
+    function saveRecipeOnly() {
+      if (!currentGeneratedRecipe) return;
+      const saved = ensureRecipeSaved();
+      showToast(`"${saved.name}" wurde in der Rezept-Bibliothek gespeichert!`, 'success');
+      document.getElementById('saveRecipeOnlyBtn').style.display = 'none';
+    }
+
+    // ===== REZEPT-BIBLIOTHEK =====
+    function getMealTypeLabel(key) {
+      const m = MEAL_TYPES[key];
+      return m ? `${m.icon} ${m.label}` : (key || '');
+    }
+
+    function saveRecipeToLibrary(recipe, mealType, ingredientsUsed) {
+      const entry = {
+        id: Date.now(),
+        name: recipe.name,
+        instructions: recipe.instructions,
+        calories: Number(recipe.calories) || 0,
+        protein: Number(recipe.protein) || 0,
+        carbs: Number(recipe.carbs) || 0,
+        fat: Number(recipe.fat) || 0,
+        mealType: mealType,
+        ingredientsUsed: ingredientsUsed || '',
+        createdAt: new Date().toISOString()
+      };
+      savedRecipes.unshift(entry);
+      persistRecipes();
+      return entry;
+    }
+
+    function persistRecipes() {
+      localStorage.setItem(RECIPES_KEY, JSON.stringify(savedRecipes));
+      if (window.saveDataToCloud) {
+        window.saveDataToCloud(allData);
+      }
+    }
+
+    async function deleteSavedRecipe(id, skipConfirm = false) {
+      const recipe = savedRecipes.find(r => r.id === id);
+      const name = recipe ? recipe.name : 'dieses Rezept';
+
+      if (!skipConfirm) {
+        const confirmed = await showConfirm(`"${name}" wirklich aus der Bibliothek löschen?`);
+        if (!confirmed) return false;
+      }
+
+      savedRecipes = savedRecipes.filter(r => r.id !== id);
+      persistRecipes();
+      renderRecipeLibrary();
+      showToast('Rezept gelöscht', 'success');
+      return true;
+    }
+
+    function addSavedRecipeToMeals(recipe) {
+      allData[TODAY_KEY].push({
+        id: Date.now(),
+        name: `${getMealTypeLabel(recipe.mealType)}: ${recipe.name}`,
+        calories: Number(recipe.calories) || 0,
+        protein: Number(recipe.protein) || 0,
+        carbs: Number(recipe.carbs) || 0,
+        fat: Number(recipe.fat) || 0
+      });
+      persistData();
+      showToast(`"${recipe.name}" wurde zu den heutigen Mahlzeiten hinzugefügt!`, 'success');
+    }
+
+    function renderRecipeLibrary() {
+      const listEl = document.getElementById('recipeLibraryList');
+      if (!listEl) return;
+      listEl.innerHTML = '';
+
+      const searchTerm = (document.getElementById('recipeSearchInput').value || '').trim().toLowerCase();
+      const mealFilter = document.getElementById('recipeFilterMealType').value;
+      const maxCalInputVal = document.getElementById('recipeFilterMaxCalories').value;
+      const maxCalFilter = maxCalInputVal !== '' ? Number(maxCalInputVal) : null;
+
+      const filtered = savedRecipes.filter(r => {
+        if (mealFilter && r.mealType !== mealFilter) return false;
+        if (maxCalFilter !== null && r.calories > maxCalFilter) return false;
+        if (searchTerm) {
+          const haystack = `${r.name} ${r.ingredientsUsed || ''} ${r.instructions || ''}`.toLowerCase();
+          if (!haystack.includes(searchTerm)) return false;
+        }
+        return true;
+      });
+
+      if (filtered.length === 0) {
+        const li = document.createElement('li');
+        li.style.borderBottom = 'none';
+        const emptyState = el('div', { className: 'empty-state' });
+        if (savedRecipes.length === 0) {
+          emptyState.appendChild(el('span', { className: 'empty-icon', text: '📖' }));
+          const txt = el('span', { className: 'empty-text' });
+          txt.append('Noch keine Rezepte gespeichert.', document.createElement('br'), 'Generiere eines auf dem Dashboard!');
+          emptyState.appendChild(txt);
+        } else {
+          emptyState.appendChild(el('span', { className: 'empty-icon', text: '🔍' }));
+          emptyState.appendChild(el('span', { className: 'empty-text', text: 'Keine Rezepte gefunden.' }));
+        }
+        li.appendChild(emptyState);
+        listEl.appendChild(li);
+        return;
+      }
+
+      filtered.forEach(recipe => {
+        const li = document.createElement('li');
+        li.className = 'swipe-item';
+
+        const deleteBg = el('div', { className: 'swipe-delete-bg', text: '🗑️ Löschen' });
+
+        const card = el('div', { className: 'recipe-card swipe-content' });
+
+        const header = el('div', { className: 'recipe-card-header' });
+        const titleWrap = el('div');
+        titleWrap.appendChild(el('div', { className: 'recipe-card-title', text: recipe.name }));
+        titleWrap.appendChild(el('div', {
+          className: 'recipe-card-macros',
+          text: `${recipe.calories} kcal | P: ${recipe.protein}g K: ${recipe.carbs}g F: ${recipe.fat}g`
+        }));
+        header.appendChild(titleWrap);
+        header.appendChild(el('span', { className: 'meal-badge', text: getMealTypeLabel(recipe.mealType) }));
+
+        const instructionsEl = el('div', { className: 'recipe-card-instructions', text: recipe.instructions });
+
+        const actions = el('div', { className: 'recipe-card-actions' });
+        const addToMealsBtn = el('button', {
+          text: 'Ins Tagebuch eintragen',
+          className: 'btn-primary',
+          onclick: () => addSavedRecipeToMeals(recipe)
+        });
+        addToMealsBtn.type = 'button';
+        actions.appendChild(addToMealsBtn);
+
+        card.appendChild(header);
+        card.appendChild(instructionsEl);
+        card.appendChild(actions);
+
+        card.addEventListener('click', (e) => {
+          if (e.target.tagName === 'BUTTON') return;
+          card.classList.toggle('expanded');
+        });
+
+        li.appendChild(deleteBg);
+        li.appendChild(card);
+        listEl.appendChild(li);
+
+        attachSwipeToDelete(li, card, () => deleteSavedRecipe(recipe.id));
+      });
+    }
+
+    function addRecipeToMeals() {
+      if (!currentGeneratedRecipe) return;
+      const saved = ensureRecipeSaved();
+      addSavedRecipeToMeals(saved);
+      document.getElementById('addRecipeBtn').style.display = 'none';
+      document.getElementById('saveRecipeOnlyBtn').style.display = 'none';
+    }
+
+    // ===== STEPPER (+/-) FÜR MENGENANGABEN =====
+    function createGramStepper(defaultVal = 100, step = 25) {
+      const wrap = document.createElement('div');
+      wrap.className = 'stepper';
+
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.className = 'stepper-input';
+      input.min = '1';
+      input.value = defaultVal;
+
+      const minusBtn = el('button', {
+        text: '−',
+        className: 'stepper-btn',
+        onclick: (e) => {
+          e.stopPropagation();
+          input.value = Math.max(1, (Number(input.value) || 0) - step);
+        }
+      });
+      minusBtn.type = 'button';
+      const plusBtn = el('button', {
+        text: '+',
+        className: 'stepper-btn',
+        onclick: (e) => {
+          e.stopPropagation();
+          input.value = (Number(input.value) || 0) + step;
+        }
+      });
+      plusBtn.type = 'button';
+
+      wrap.appendChild(minusBtn);
+      wrap.appendChild(input);
+      wrap.appendChild(plusBtn);
+      return { wrap, input };
+    }
+
+    // ===== PRODUKTSUCHE / LEBENSMITTELDATENBANK (Open Food Facts) =====
+    const OFF_FIELDS = "code,product_name,brands,nutriments,image_small_url";
+    const MAX_FOOD_RESULTS = 5;
+
+    // Feste Liste gängiger, unverpackter Grundlebensmittel mit
+    // Standard-Nährwerten pro 100g. Open Food Facts deckt frisches
+    // Obst/Gemüse (ohne Barcode) oft nur lückenhaft ab – diese Liste
+    // sorgt dafür, dass z.B. "Radieschen" oder "Apfel" trotzdem
+    // zuverlässig gefunden werden. Werte sind allgemeine Richtwerte,
+    // keine exakten Angaben für eine bestimmte Sorte/Charge.
+    const LOCAL_FOOD_DB = [
+      // Obst
+      { name: "Apfel", calories: 52, protein: 0.3, carbs: 14, fat: 0.2 },
+      { name: "Banane", calories: 89, protein: 1.1, carbs: 23, fat: 0.3 },
+      { name: "Birne", calories: 57, protein: 0.4, carbs: 15, fat: 0.1 },
+      { name: "Orange", calories: 47, protein: 0.9, carbs: 12, fat: 0.1 },
+      { name: "Mandarine", calories: 53, protein: 0.8, carbs: 13, fat: 0.3 },
+      { name: "Grapefruit", calories: 42, protein: 0.8, carbs: 11, fat: 0.1 },
+      { name: "Zitrone", calories: 29, protein: 1.1, carbs: 9, fat: 0.3 },
+      { name: "Limette", calories: 30, protein: 0.7, carbs: 11, fat: 0.2 },
+      { name: "Erdbeeren", calories: 32, protein: 0.7, carbs: 8, fat: 0.3 },
+      { name: "Himbeeren", calories: 52, protein: 1.2, carbs: 12, fat: 0.7 },
+      { name: "Blaubeeren", calories: 57, protein: 0.7, carbs: 14, fat: 0.3 },
+      { name: "Heidelbeeren", calories: 57, protein: 0.7, carbs: 14, fat: 0.3 },
+      { name: "Brombeeren", calories: 43, protein: 1.4, carbs: 10, fat: 0.5 },
+      { name: "Johannisbeeren", calories: 56, protein: 1.4, carbs: 13, fat: 0.2 },
+      { name: "Stachelbeeren", calories: 44, protein: 0.9, carbs: 10, fat: 0.6 },
+      { name: "Weintrauben", calories: 69, protein: 0.6, carbs: 18, fat: 0.2 },
+      { name: "Kirschen", calories: 63, protein: 1.1, carbs: 16, fat: 0.2 },
+      { name: "Pflaume", calories: 46, protein: 0.7, carbs: 11, fat: 0.3 },
+      { name: "Pfirsich", calories: 39, protein: 0.9, carbs: 10, fat: 0.3 },
+      { name: "Nektarine", calories: 44, protein: 1.1, carbs: 10, fat: 0.3 },
+      { name: "Aprikose", calories: 48, protein: 1.4, carbs: 11, fat: 0.4 },
+      { name: "Wassermelone", calories: 30, protein: 0.6, carbs: 8, fat: 0.2 },
+      { name: "Honigmelone", calories: 36, protein: 0.8, carbs: 9, fat: 0.2 },
+      { name: "Ananas", calories: 50, protein: 0.5, carbs: 13, fat: 0.1 },
+      { name: "Mango", calories: 60, protein: 0.8, carbs: 15, fat: 0.4 },
+      { name: "Kiwi", calories: 61, protein: 1.1, carbs: 15, fat: 0.5 },
+      { name: "Feige", calories: 74, protein: 0.8, carbs: 19, fat: 0.3 },
+      { name: "Granatapfel", calories: 83, protein: 1.7, carbs: 19, fat: 1.2 },
+      { name: "Avocado", calories: 160, protein: 2.0, carbs: 9, fat: 15.0 },
+      { name: "Rhabarber", calories: 21, protein: 0.9, carbs: 4.5, fat: 0.2 },
+
+      // Gemüse
+      { name: "Radieschen", calories: 16, protein: 0.7, carbs: 2, fat: 0.1 },
+      { name: "Gurke", calories: 15, protein: 0.7, carbs: 3.6, fat: 0.1 },
+      { name: "Tomate", calories: 18, protein: 0.9, carbs: 3.9, fat: 0.2 },
+      { name: "Karotte", calories: 41, protein: 0.9, carbs: 10, fat: 0.2 },
+      { name: "Paprika", calories: 31, protein: 1.0, carbs: 6, fat: 0.3 },
+      { name: "Brokkoli", calories: 34, protein: 2.8, carbs: 7, fat: 0.4 },
+      { name: "Blumenkohl", calories: 25, protein: 1.9, carbs: 5, fat: 0.3 },
+      { name: "Zucchini", calories: 17, protein: 1.2, carbs: 3.1, fat: 0.3 },
+      { name: "Aubergine", calories: 25, protein: 1.0, carbs: 6, fat: 0.2 },
+      { name: "Kürbis", calories: 26, protein: 1.0, carbs: 6.5, fat: 0.1 },
+      { name: "Spinat", calories: 23, protein: 2.9, carbs: 3.6, fat: 0.4 },
+      { name: "Feldsalat", calories: 15, protein: 2.0, carbs: 1.7, fat: 0.4 },
+      { name: "Eisbergsalat", calories: 14, protein: 0.9, carbs: 3, fat: 0.1 },
+      { name: "Rucola", calories: 25, protein: 2.6, carbs: 3.7, fat: 0.7 },
+      { name: "Kartoffel", calories: 77, protein: 2.0, carbs: 17, fat: 0.1 },
+      { name: "Süßkartoffel", calories: 86, protein: 1.6, carbs: 20, fat: 0.1 },
+      { name: "Rote Bete", calories: 43, protein: 1.6, carbs: 10, fat: 0.2 },
+      { name: "Zwiebel", calories: 40, protein: 1.1, carbs: 9, fat: 0.1 },
+      { name: "Lauch", calories: 61, protein: 1.5, carbs: 14, fat: 0.3 },
+      { name: "Knoblauch", calories: 149, protein: 6.4, carbs: 33, fat: 0.5 },
+      { name: "Sellerie", calories: 16, protein: 0.7, carbs: 3, fat: 0.2 },
+      { name: "Kohlrabi", calories: 27, protein: 1.7, carbs: 5, fat: 0.1 },
+      { name: "Weißkohl", calories: 25, protein: 1.3, carbs: 5.8, fat: 0.1 },
+      { name: "Rotkohl", calories: 31, protein: 1.4, carbs: 7, fat: 0.2 },
+      { name: "Rosenkohl", calories: 43, protein: 3.4, carbs: 9, fat: 0.3 },
+      { name: "Mais", calories: 86, protein: 3.2, carbs: 19, fat: 1.2 },
+      { name: "Erbsen", calories: 81, protein: 5.4, carbs: 14, fat: 0.4 },
+      { name: "Grüne Bohnen", calories: 31, protein: 1.8, carbs: 7, fat: 0.2 },
+      { name: "Spargel", calories: 20, protein: 2.2, carbs: 3.9, fat: 0.1 },
+      { name: "Champignons", calories: 22, protein: 3.1, carbs: 3.3, fat: 0.3 },
+
+      // Grundnahrungsmittel
+      { name: "Reis (gekocht)", calories: 130, protein: 2.7, carbs: 28, fat: 0.3 },
+      { name: "Nudeln (gekocht)", calories: 131, protein: 5.0, carbs: 25, fat: 1.1 },
+      { name: "Haferflocken", calories: 379, protein: 13.0, carbs: 60, fat: 7.0 },
+      { name: "Vollkornbrot", calories: 247, protein: 9.0, carbs: 41, fat: 3.3 },
+      { name: "Ei (gekocht)", calories: 155, protein: 13.0, carbs: 1.1, fat: 11.0 },
+      { name: "Hühnerbrust", calories: 120, protein: 23.0, carbs: 0, fat: 2.0 },
+      { name: "Magerquark", calories: 67, protein: 12.0, carbs: 4, fat: 0.2 },
+      { name: "Naturjoghurt", calories: 61, protein: 3.5, carbs: 4.7, fat: 3.3 },
+      { name: "Milch", calories: 64, protein: 3.3, carbs: 4.8, fat: 3.5 },
+      { name: "Linsen (gekocht)", calories: 116, protein: 9.0, carbs: 20, fat: 0.4 },
+
+      // Proteinquellen (Fleisch, Fisch, Alternativen)
+      { name: "Putenbrust (gegart)", calories: 135, protein: 29.0, carbs: 0, fat: 1.5 },
+      { name: "Rinderhack (mager, gebraten)", calories: 217, protein: 26.0, carbs: 0, fat: 12.0 },
+      { name: "Lachs (gegart)", calories: 208, protein: 20.0, carbs: 0, fat: 13.0 },
+      { name: "Thunfisch (im eigenen Saft)", calories: 116, protein: 26.0, carbs: 0, fat: 1.0 },
+      { name: "Garnelen (gegart)", calories: 99, protein: 21.0, carbs: 0.2, fat: 1.7 },
+      { name: "Tofu (natur)", calories: 76, protein: 8.0, carbs: 1.9, fat: 4.8 },
+      { name: "Hüttenkäse", calories: 98, protein: 11.0, carbs: 3.4, fat: 4.3 },
+      { name: "Feta", calories: 264, protein: 14.0, carbs: 4.0, fat: 21.0 },
+      { name: "Gouda", calories: 356, protein: 25.0, carbs: 2.2, fat: 27.0 },
+
+      // Nüsse & Samen
+      { name: "Mandeln", calories: 579, protein: 21.0, carbs: 22.0, fat: 50.0 },
+      { name: "Walnüsse", calories: 654, protein: 15.0, carbs: 14.0, fat: 65.0 },
+      { name: "Erdnüsse", calories: 567, protein: 26.0, carbs: 16.0, fat: 49.0 },
+      { name: "Cashewkerne", calories: 553, protein: 18.0, carbs: 30.0, fat: 44.0 },
+      { name: "Chiasamen", calories: 486, protein: 17.0, carbs: 42.0, fat: 31.0 },
+      { name: "Leinsamen", calories: 534, protein: 18.0, carbs: 29.0, fat: 42.0 },
+      { name: "Erdnussbutter", calories: 588, protein: 25.0, carbs: 20.0, fat: 50.0 },
+
+      // Hülsenfrüchte (gekocht) - viele Ballaststoffe, blutzuckerfreundlich
+      { name: "Kichererbsen (gekocht)", calories: 164, protein: 8.9, carbs: 27.0, fat: 2.6 },
+      { name: "Kidneybohnen (gekocht)", calories: 127, protein: 8.7, carbs: 22.8, fat: 0.5 },
+      { name: "Schwarze Bohnen (gekocht)", calories: 132, protein: 8.9, carbs: 24.0, fat: 0.5 },
+      { name: "Weiße Bohnen (gekocht)", calories: 139, protein: 9.7, carbs: 25.0, fat: 0.5 },
+
+      // Vollkorn-Beilagen
+      { name: "Quinoa (gekocht)", calories: 120, protein: 4.4, carbs: 21.0, fat: 1.9 },
+      { name: "Bulgur (gekocht)", calories: 83, protein: 3.1, carbs: 18.6, fat: 0.2 },
+      { name: "Couscous (gekocht)", calories: 112, protein: 3.8, carbs: 23.0, fat: 0.2 },
+      { name: "Vollkornreis (gekocht)", calories: 123, protein: 2.6, carbs: 25.8, fat: 1.0 },
+      { name: "Vollkornnudeln (gekocht)", calories: 124, protein: 5.3, carbs: 23.2, fat: 0.9 },
+
+      // Fette & Öle
+      { name: "Olivenöl", calories: 884, protein: 0, carbs: 0, fat: 100.0 },
+      { name: "Rapsöl", calories: 884, protein: 0, carbs: 0, fat: 100.0 },
+      { name: "Butter", calories: 741, protein: 0.7, carbs: 0.6, fat: 83.0 }
+    ];
+
+    // Wandelt einen Treffer aus LOCAL_FOOD_DB in die gleiche Struktur um,
+    // die renderFoodResults() auch von Open Food Facts erwartet.
+    function findLocalFoodMatches(query) {
+      const q = query.trim().toLowerCase();
+      if (!q) return [];
+      return LOCAL_FOOD_DB
+        .filter(f => f.name.toLowerCase().includes(q))
+        .map(f => ({
+          product_name: f.name,
+          isLocal: true,
+          nutriments: {
+            'energy-kcal_100g': f.calories,
+            'proteins_100g': f.protein,
+            'carbohydrates_100g': f.carbs,
+            'fat_100g': f.fat
+          }
+        }));
+    }
+
+    async function fetchFoodSearchLegacy(query) {
+      try {
+        const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=${MAX_FOOD_RESULTS}`;
+        const res = await fetch(url);
+        if (!res.ok) return { ok: false, products: [] };
+        const data = await res.json();
+        return { ok: true, products: data.products || [] };
+      } catch (e) {
+        return { ok: false, products: [] };
+      }
+    }
+
+    async function fetchFoodSearchAlicious(query) {
+      try {
+        const url = `https://search.openfoodfacts.org/search?q=${encodeURIComponent(query)}&page_size=${MAX_FOOD_RESULTS}&langs=de,en`;
+        const res = await fetch(url);
+        if (!res.ok) return { ok: false, products: [] };
+        const data = await res.json();
+        return { ok: true, products: data.hits || data.products || [] };
+      } catch (e) {
+        return { ok: false, products: [] };
+      }
+    }
+
+    async function searchFoodDatabase() {
+      const query = document.getElementById('foodSearchInput').value.trim();
+      const resultsEl = document.getElementById('foodSearchResults');
+
+      if (!query) {
+        showToast('Bitte einen Suchbegriff eingeben (z.B. "DM Hafermilch" oder "Radieschen").', 'error');
+        return;
+      }
+
+      resultsEl.innerHTML = '<div class="loading-line"><span class="spinner"></span>Suche in der Lebensmitteldatenbank...</div>';
+
+      // Zuerst die feste Liste an Grundlebensmitteln (Obst, Gemüse, Basics)
+      // durchsuchen – die deckt unverpackte Ware zuverlässiger ab als OFF.
+      const localMatches = findLocalFoodMatches(query);
+
+      let offProducts = [];
+      const legacy = await fetchFoodSearchLegacy(query);
+      if (legacy.ok && legacy.products.length > 0) {
+        offProducts = legacy.products;
+      } else {
+        const fallback = await fetchFoodSearchAlicious(query);
+        if (fallback.products.length > 0) {
+          offProducts = fallback.products;
+        } else if (!legacy.ok && !fallback.ok && localMatches.length === 0) {
+          resultsEl.innerHTML = '';
+          resultsEl.appendChild(el('div', {
+            text: 'Die Lebensmitteldatenbank ist gerade nicht erreichbar. Bitte in ein paar Minuten erneut versuchen.',
+            style: { color: '#ef4444', marginTop: '0.5rem' }
+          }));
+          return;
+        }
+      }
+
+      // Lokale Treffer zuerst zeigen (zuverlässiger für frisches Obst/
+      // Gemüse), danach die Ergebnisse aus Open Food Facts.
+      renderFoodResults([...localMatches, ...offProducts]);
+    }
+
+    function renderFoodResults(products) {
+      const resultsEl = document.getElementById('foodSearchResults');
+      resultsEl.innerHTML = '';
+
+      const withNutriments = products
+        .filter(p => p.nutriments && p.nutriments['energy-kcal_100g'] != null)
+        .slice(0, MAX_FOOD_RESULTS);
+
+      if (withNutriments.length === 0) {
+        resultsEl.appendChild(el('div', { text: 'Keine passenden Produkte mit Nährwertangaben gefunden.', style: { color: 'var(--text-muted)', marginTop: '0.5rem' } }));
+        return;
+      }
+
+      resultsEl.appendChild(el('div', {
+        text: withNutriments.length === 1
+          ? 'Ein passendes Produkt gefunden:'
+          : `Top ${withNutriments.length} Treffer – bitte das passende Produkt auswählen:`,
+        style: { fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.5rem' }
+      }));
+
+      withNutriments.forEach(p => {
+        const n = p.nutriments;
+        const card = el('div', { className: 'product-result' });
+
+        const titleRow = el('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' } });
+        titleRow.appendChild(el('div', {
+          className: 'product-title',
+          text: p.product_name ? p.product_name : 'Unbekanntes Produkt'
+        }));
+        if (p.isLocal) {
+          titleRow.appendChild(el('span', { className: 'local-food-badge', text: '🌱 Basiswert' }));
+        }
+
+        const subtitle = (!p.isLocal && p.brands) ? el('div', { text: p.brands, style: { fontSize: '0.8rem', color: 'var(--text-muted)' } }) : null;
+
+        const macros = el('div', {
+          className: 'product-macros',
+          text: `${Math.round(n['energy-kcal_100g'])} kcal / 100g · P: ${(n['proteins_100g'] || 0).toFixed(1)}g K: ${(n['carbohydrates_100g'] || 0).toFixed(1)}g F: ${(n['fat_100g'] || 0).toFixed(1)}g`
+        });
+
+        const { wrap: stepperWrap, input: weightInput } = createGramStepper(100, 25);
+
+        const addBtn = el('button', {
+          text: 'Zum Tagebuch hinzufügen',
+          className: 'btn-primary',
+          onclick: () => addFoodProductToMeals(p, weightInput)
+        });
+        addBtn.type = 'button';
+
+        card.appendChild(titleRow);
+        if (subtitle) card.appendChild(subtitle);
+        card.appendChild(macros);
+        card.appendChild(stepperWrap);
+        card.appendChild(addBtn);
+        resultsEl.appendChild(card);
+      });
+    }
+
+    function addFoodProductToMeals(product, weightInput) {
+      const grams = Number(weightInput.value);
+      if (!grams || grams <= 0) {
+        showToast('Bitte eine gültige Menge in Gramm eingeben.', 'error');
+        return;
+      }
+
+      const factor = grams / 100;
+      const n = product.nutriments || {};
+      const name = product.product_name || 'Produkt';
+
+      allData[TODAY_KEY].push({
+        id: Date.now(),
+        name: `🛒 ${name} (${grams}g)`,
+        calories: Math.round((n['energy-kcal_100g'] || 0) * factor),
+        protein: Math.round((n['proteins_100g'] || 0) * factor),
+        carbs: Math.round((n['carbohydrates_100g'] || 0) * factor),
+        fat: Math.round((n['fat_100g'] || 0) * factor)
+      });
+
+      persistData();
+      showToast(`"${name}" (${grams}g) wurde zu den heutigen Mahlzeiten hinzugefügt!`, 'success');
+      document.getElementById('foodSearchResults').innerHTML = '';
+      document.getElementById('foodSearchInput').value = '';
+    }
+
+    async function lookupBarcode(barcode) {
+      const resultsEl = document.getElementById('foodSearchResults');
+      resultsEl.innerHTML = `<div class="loading-line"><span class="spinner"></span>Suche Barcode ${barcode}...</div>`;
+
+      try {
+        const url = `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(barcode)}.json?fields=${OFF_FIELDS}`;
+        const res = await fetch(url);
+        const data = await res.json();
+
+        if (data.status !== 1 || !data.product) {
+          resultsEl.innerHTML = '';
+          resultsEl.appendChild(el('div', { text: 'Kein Produkt zu diesem Barcode gefunden.', style: { color: 'var(--text-muted)', marginTop: '0.5rem' } }));
+          return;
+        }
+
+        renderFoodResults([data.product]);
+      } catch (e) {
+        resultsEl.innerHTML = '';
+        resultsEl.appendChild(el('div', { text: 'Fehler beim Abrufen des Barcodes.', style: { color: '#ef4444', marginTop: '0.5rem' } }));
+      }
+    }
+
+    // ===== BARCODE-SCANNER (Kamera) =====
+    function startBarcodeScanner() {
+      if (typeof Html5Qrcode === 'undefined') {
+        showToast('Scanner-Bibliothek konnte nicht geladen werden. Bitte Internetverbindung prüfen.', 'error');
+        return;
+      }
+
+      document.getElementById('scannerOverlay').style.display = 'flex';
+      html5QrCode = new Html5Qrcode("barcodeReaderRegion");
+
+      const config = {
+        fps: 10,
+        qrbox: { width: 260, height: 140 },
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+          Html5QrcodeSupportedFormats.CODE_128
+        ]
+      };
+
+      html5QrCode.start(
+        { facingMode: "environment" },
+        config,
+        (decodedText) => {
+          stopBarcodeScanner();
+          lookupBarcode(decodedText);
+        },
+        () => { /* kein Treffer in diesem Frame, Scan läuft weiter */ }
+      ).catch(err => {
+        showToast('Kamera konnte nicht gestartet werden. Bitte Kamera-Berechtigung prüfen.', 'error');
+        document.getElementById('scannerOverlay').style.display = 'none';
+      });
+    }
+
+    function stopBarcodeScanner() {
+      document.getElementById('scannerOverlay').style.display = 'none';
+      if (html5QrCode) {
+        html5QrCode.stop().then(() => html5QrCode.clear()).catch(() => {});
+        html5QrCode = null;
+      }
+    }
+  </script>
+</body>
+</html>
