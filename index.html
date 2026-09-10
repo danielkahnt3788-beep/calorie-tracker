@@ -2134,4 +2134,372 @@ Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown:
         onclick: (e) => {
           e.stopPropagation();
           input.value = (Number(input.value) || 0) + step;
-  
+        }
+      });
+      plusBtn.type = 'button';
+
+      wrap.appendChild(minusBtn);
+      wrap.appendChild(input);
+      wrap.appendChild(plusBtn);
+      return { wrap, input };
+    }
+
+    // ===== PRODUKTSUCHE / LEBENSMITTELDATENBANK (Open Food Facts) =====
+    const OFF_FIELDS = "code,product_name,brands,nutriments,image_small_url";
+    const MAX_FOOD_RESULTS = 5;
+
+    // Feste Liste gängiger, unverpackter Grundlebensmittel mit
+    // Standard-Nährwerten pro 100g. Open Food Facts deckt frisches
+    // Obst/Gemüse (ohne Barcode) oft nur lückenhaft ab – diese Liste
+    // sorgt dafür, dass z.B. "Radieschen" oder "Apfel" trotzdem
+    // zuverlässig gefunden werden. Werte sind allgemeine Richtwerte,
+    // keine exakten Angaben für eine bestimmte Sorte/Charge.
+    const LOCAL_FOOD_DB = [
+      // Obst
+      { name: "Apfel", calories: 52, protein: 0.3, carbs: 14, fat: 0.2 },
+      { name: "Banane", calories: 89, protein: 1.1, carbs: 23, fat: 0.3 },
+      { name: "Birne", calories: 57, protein: 0.4, carbs: 15, fat: 0.1 },
+      { name: "Orange", calories: 47, protein: 0.9, carbs: 12, fat: 0.1 },
+      { name: "Mandarine", calories: 53, protein: 0.8, carbs: 13, fat: 0.3 },
+      { name: "Grapefruit", calories: 42, protein: 0.8, carbs: 11, fat: 0.1 },
+      { name: "Zitrone", calories: 29, protein: 1.1, carbs: 9, fat: 0.3 },
+      { name: "Limette", calories: 30, protein: 0.7, carbs: 11, fat: 0.2 },
+      { name: "Erdbeeren", calories: 32, protein: 0.7, carbs: 8, fat: 0.3 },
+      { name: "Himbeeren", calories: 52, protein: 1.2, carbs: 12, fat: 0.7 },
+      { name: "Blaubeeren", calories: 57, protein: 0.7, carbs: 14, fat: 0.3 },
+      { name: "Heidelbeeren", calories: 57, protein: 0.7, carbs: 14, fat: 0.3 },
+      { name: "Brombeeren", calories: 43, protein: 1.4, carbs: 10, fat: 0.5 },
+      { name: "Johannisbeeren", calories: 56, protein: 1.4, carbs: 13, fat: 0.2 },
+      { name: "Stachelbeeren", calories: 44, protein: 0.9, carbs: 10, fat: 0.6 },
+      { name: "Weintrauben", calories: 69, protein: 0.6, carbs: 18, fat: 0.2 },
+      { name: "Kirschen", calories: 63, protein: 1.1, carbs: 16, fat: 0.2 },
+      { name: "Pflaume", calories: 46, protein: 0.7, carbs: 11, fat: 0.3 },
+      { name: "Pfirsich", calories: 39, protein: 0.9, carbs: 10, fat: 0.3 },
+      { name: "Nektarine", calories: 44, protein: 1.1, carbs: 10, fat: 0.3 },
+      { name: "Aprikose", calories: 48, protein: 1.4, carbs: 11, fat: 0.4 },
+      { name: "Wassermelone", calories: 30, protein: 0.6, carbs: 8, fat: 0.2 },
+      { name: "Honigmelone", calories: 36, protein: 0.8, carbs: 9, fat: 0.2 },
+      { name: "Ananas", calories: 50, protein: 0.5, carbs: 13, fat: 0.1 },
+      { name: "Mango", calories: 60, protein: 0.8, carbs: 15, fat: 0.4 },
+      { name: "Kiwi", calories: 61, protein: 1.1, carbs: 15, fat: 0.5 },
+      { name: "Feige", calories: 74, protein: 0.8, carbs: 19, fat: 0.3 },
+      { name: "Granatapfel", calories: 83, protein: 1.7, carbs: 19, fat: 1.2 },
+      { name: "Avocado", calories: 160, protein: 2.0, carbs: 9, fat: 15.0 },
+      { name: "Rhabarber", calories: 21, protein: 0.9, carbs: 4.5, fat: 0.2 },
+
+      // Gemüse
+      { name: "Radieschen", calories: 16, protein: 0.7, carbs: 2, fat: 0.1 },
+      { name: "Gurke", calories: 15, protein: 0.7, carbs: 3.6, fat: 0.1 },
+      { name: "Tomate", calories: 18, protein: 0.9, carbs: 3.9, fat: 0.2 },
+      { name: "Karotte", calories: 41, protein: 0.9, carbs: 10, fat: 0.2 },
+      { name: "Paprika", calories: 31, protein: 1.0, carbs: 6, fat: 0.3 },
+      { name: "Brokkoli", calories: 34, protein: 2.8, carbs: 7, fat: 0.4 },
+      { name: "Blumenkohl", calories: 25, protein: 1.9, carbs: 5, fat: 0.3 },
+      { name: "Zucchini", calories: 17, protein: 1.2, carbs: 3.1, fat: 0.3 },
+      { name: "Aubergine", calories: 25, protein: 1.0, carbs: 6, fat: 0.2 },
+      { name: "Kürbis", calories: 26, protein: 1.0, carbs: 6.5, fat: 0.1 },
+      { name: "Spinat", calories: 23, protein: 2.9, carbs: 3.6, fat: 0.4 },
+      { name: "Feldsalat", calories: 15, protein: 2.0, carbs: 1.7, fat: 0.4 },
+      { name: "Eisbergsalat", calories: 14, protein: 0.9, carbs: 3, fat: 0.1 },
+      { name: "Rucola", calories: 25, protein: 2.6, carbs: 3.7, fat: 0.7 },
+      { name: "Kartoffel", calories: 77, protein: 2.0, carbs: 17, fat: 0.1 },
+      { name: "Süßkartoffel", calories: 86, protein: 1.6, carbs: 20, fat: 0.1 },
+      { name: "Rote Bete", calories: 43, protein: 1.6, carbs: 10, fat: 0.2 },
+      { name: "Zwiebel", calories: 40, protein: 1.1, carbs: 9, fat: 0.1 },
+      { name: "Lauch", calories: 61, protein: 1.5, carbs: 14, fat: 0.3 },
+      { name: "Knoblauch", calories: 149, protein: 6.4, carbs: 33, fat: 0.5 },
+      { name: "Sellerie", calories: 16, protein: 0.7, carbs: 3, fat: 0.2 },
+      { name: "Kohlrabi", calories: 27, protein: 1.7, carbs: 5, fat: 0.1 },
+      { name: "Weißkohl", calories: 25, protein: 1.3, carbs: 5.8, fat: 0.1 },
+      { name: "Rotkohl", calories: 31, protein: 1.4, carbs: 7, fat: 0.2 },
+      { name: "Rosenkohl", calories: 43, protein: 3.4, carbs: 9, fat: 0.3 },
+      { name: "Mais", calories: 86, protein: 3.2, carbs: 19, fat: 1.2 },
+      { name: "Erbsen", calories: 81, protein: 5.4, carbs: 14, fat: 0.4 },
+      { name: "Grüne Bohnen", calories: 31, protein: 1.8, carbs: 7, fat: 0.2 },
+      { name: "Spargel", calories: 20, protein: 2.2, carbs: 3.9, fat: 0.1 },
+      { name: "Champignons", calories: 22, protein: 3.1, carbs: 3.3, fat: 0.3 },
+
+      // Grundnahrungsmittel
+      { name: "Reis (gekocht)", calories: 130, protein: 2.7, carbs: 28, fat: 0.3 },
+      { name: "Nudeln (gekocht)", calories: 131, protein: 5.0, carbs: 25, fat: 1.1 },
+      { name: "Haferflocken", calories: 379, protein: 13.0, carbs: 60, fat: 7.0 },
+      { name: "Vollkornbrot", calories: 247, protein: 9.0, carbs: 41, fat: 3.3 },
+      { name: "Ei (gekocht)", calories: 155, protein: 13.0, carbs: 1.1, fat: 11.0 },
+      { name: "Hühnerbrust", calories: 120, protein: 23.0, carbs: 0, fat: 2.0 },
+      { name: "Magerquark", calories: 67, protein: 12.0, carbs: 4, fat: 0.2 },
+      { name: "Naturjoghurt", calories: 61, protein: 3.5, carbs: 4.7, fat: 3.3 },
+      { name: "Milch", calories: 64, protein: 3.3, carbs: 4.8, fat: 3.5 },
+      { name: "Linsen (gekocht)", calories: 116, protein: 9.0, carbs: 20, fat: 0.4 },
+
+      // Proteinquellen (Fleisch, Fisch, Alternativen)
+      { name: "Putenbrust (gegart)", calories: 135, protein: 29.0, carbs: 0, fat: 1.5 },
+      { name: "Rinderhack (mager, gebraten)", calories: 217, protein: 26.0, carbs: 0, fat: 12.0 },
+      { name: "Lachs (gegart)", calories: 208, protein: 20.0, carbs: 0, fat: 13.0 },
+      { name: "Thunfisch (im eigenen Saft)", calories: 116, protein: 26.0, carbs: 0, fat: 1.0 },
+      { name: "Garnelen (gegart)", calories: 99, protein: 21.0, carbs: 0.2, fat: 1.7 },
+      { name: "Tofu (natur)", calories: 76, protein: 8.0, carbs: 1.9, fat: 4.8 },
+      { name: "Hüttenkäse", calories: 98, protein: 11.0, carbs: 3.4, fat: 4.3 },
+      { name: "Feta", calories: 264, protein: 14.0, carbs: 4.0, fat: 21.0 },
+      { name: "Gouda", calories: 356, protein: 25.0, carbs: 2.2, fat: 27.0 },
+
+      // Nüsse & Samen
+      { name: "Mandeln", calories: 579, protein: 21.0, carbs: 22.0, fat: 50.0 },
+      { name: "Walnüsse", calories: 654, protein: 15.0, carbs: 14.0, fat: 65.0 },
+      { name: "Erdnüsse", calories: 567, protein: 26.0, carbs: 16.0, fat: 49.0 },
+      { name: "Cashewkerne", calories: 553, protein: 18.0, carbs: 30.0, fat: 44.0 },
+      { name: "Chiasamen", calories: 486, protein: 17.0, carbs: 42.0, fat: 31.0 },
+      { name: "Leinsamen", calories: 534, protein: 18.0, carbs: 29.0, fat: 42.0 },
+      { name: "Erdnussbutter", calories: 588, protein: 25.0, carbs: 20.0, fat: 50.0 },
+
+      // Hülsenfrüchte (gekocht) - viele Ballaststoffe, blutzuckerfreundlich
+      { name: "Kichererbsen (gekocht)", calories: 164, protein: 8.9, carbs: 27.0, fat: 2.6 },
+      { name: "Kidneybohnen (gekocht)", calories: 127, protein: 8.7, carbs: 22.8, fat: 0.5 },
+      { name: "Schwarze Bohnen (gekocht)", calories: 132, protein: 8.9, carbs: 24.0, fat: 0.5 },
+      { name: "Weiße Bohnen (gekocht)", calories: 139, protein: 9.7, carbs: 25.0, fat: 0.5 },
+
+      // Vollkorn-Beilagen
+      { name: "Quinoa (gekocht)", calories: 120, protein: 4.4, carbs: 21.0, fat: 1.9 },
+      { name: "Bulgur (gekocht)", calories: 83, protein: 3.1, carbs: 18.6, fat: 0.2 },
+      { name: "Couscous (gekocht)", calories: 112, protein: 3.8, carbs: 23.0, fat: 0.2 },
+      { name: "Vollkornreis (gekocht)", calories: 123, protein: 2.6, carbs: 25.8, fat: 1.0 },
+      { name: "Vollkornnudeln (gekocht)", calories: 124, protein: 5.3, carbs: 23.2, fat: 0.9 },
+
+      // Fette & Öle
+      { name: "Olivenöl", calories: 884, protein: 0, carbs: 0, fat: 100.0 },
+      { name: "Rapsöl", calories: 884, protein: 0, carbs: 0, fat: 100.0 },
+      { name: "Butter", calories: 741, protein: 0.7, carbs: 0.6, fat: 83.0 }
+    ];
+
+    // Wandelt einen Treffer aus LOCAL_FOOD_DB in die gleiche Struktur um,
+    // die renderFoodResults() auch von Open Food Facts erwartet.
+    function findLocalFoodMatches(query) {
+      const q = query.trim().toLowerCase();
+      if (!q) return [];
+      return LOCAL_FOOD_DB
+        .filter(f => f.name.toLowerCase().includes(q))
+        .map(f => ({
+          product_name: f.name,
+          isLocal: true,
+          nutriments: {
+            'energy-kcal_100g': f.calories,
+            'proteins_100g': f.protein,
+            'carbohydrates_100g': f.carbs,
+            'fat_100g': f.fat
+          }
+        }));
+    }
+
+    async function fetchFoodSearchLegacy(query) {
+      try {
+        const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=${MAX_FOOD_RESULTS}`;
+        const res = await fetch(url);
+        if (!res.ok) return { ok: false, products: [] };
+        const data = await res.json();
+        return { ok: true, products: data.products || [] };
+      } catch (e) {
+        return { ok: false, products: [] };
+      }
+    }
+
+    async function fetchFoodSearchAlicious(query) {
+      try {
+        const url = `https://search.openfoodfacts.org/search?q=${encodeURIComponent(query)}&page_size=${MAX_FOOD_RESULTS}&langs=de,en`;
+        const res = await fetch(url);
+        if (!res.ok) return { ok: false, products: [] };
+        const data = await res.json();
+        return { ok: true, products: data.hits || data.products || [] };
+      } catch (e) {
+        return { ok: false, products: [] };
+      }
+    }
+
+    async function searchFoodDatabase() {
+      const query = document.getElementById('foodSearchInput').value.trim();
+      const resultsEl = document.getElementById('foodSearchResults');
+
+      if (!query) {
+        showToast('Bitte einen Suchbegriff eingeben (z.B. "DM Hafermilch" oder "Radieschen").', 'error');
+        return;
+      }
+
+      resultsEl.innerHTML = '<div class="loading-line"><span class="spinner"></span>Suche in der Lebensmitteldatenbank...</div>';
+
+      // Zuerst die feste Liste an Grundlebensmitteln (Obst, Gemüse, Basics)
+      // durchsuchen – die deckt unverpackte Ware zuverlässiger ab als OFF.
+      const localMatches = findLocalFoodMatches(query);
+
+      let offProducts = [];
+      const legacy = await fetchFoodSearchLegacy(query);
+      if (legacy.ok && legacy.products.length > 0) {
+        offProducts = legacy.products;
+      } else {
+        const fallback = await fetchFoodSearchAlicious(query);
+        if (fallback.products.length > 0) {
+          offProducts = fallback.products;
+        } else if (!legacy.ok && !fallback.ok && localMatches.length === 0) {
+          resultsEl.innerHTML = '';
+          resultsEl.appendChild(el('div', {
+            text: 'Die Lebensmitteldatenbank ist gerade nicht erreichbar. Bitte in ein paar Minuten erneut versuchen.',
+            style: { color: '#ef4444', marginTop: '0.5rem' }
+          }));
+          return;
+        }
+      }
+
+      // Lokale Treffer zuerst zeigen (zuverlässiger für frisches Obst/
+      // Gemüse), danach die Ergebnisse aus Open Food Facts.
+      renderFoodResults([...localMatches, ...offProducts]);
+    }
+
+    function renderFoodResults(products) {
+      const resultsEl = document.getElementById('foodSearchResults');
+      resultsEl.innerHTML = '';
+
+      const withNutriments = products
+        .filter(p => p.nutriments && p.nutriments['energy-kcal_100g'] != null)
+        .slice(0, MAX_FOOD_RESULTS);
+
+      if (withNutriments.length === 0) {
+        resultsEl.appendChild(el('div', { text: 'Keine passenden Produkte mit Nährwertangaben gefunden.', style: { color: 'var(--text-muted)', marginTop: '0.5rem' } }));
+        return;
+      }
+
+      resultsEl.appendChild(el('div', {
+        text: withNutriments.length === 1
+          ? 'Ein passendes Produkt gefunden:'
+          : `Top ${withNutriments.length} Treffer – bitte das passende Produkt auswählen:`,
+        style: { fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.5rem' }
+      }));
+
+      withNutriments.forEach(p => {
+        const n = p.nutriments;
+        const card = el('div', { className: 'product-result' });
+
+        const titleRow = el('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' } });
+        titleRow.appendChild(el('div', {
+          className: 'product-title',
+          text: p.product_name ? p.product_name : 'Unbekanntes Produkt'
+        }));
+        if (p.isLocal) {
+          titleRow.appendChild(el('span', { className: 'local-food-badge', text: '🌱 Basiswert' }));
+        }
+
+        const subtitle = (!p.isLocal && p.brands) ? el('div', { text: p.brands, style: { fontSize: '0.8rem', color: 'var(--text-muted)' } }) : null;
+
+        const macros = el('div', {
+          className: 'product-macros',
+          text: `${Math.round(n['energy-kcal_100g'])} kcal / 100g · P: ${(n['proteins_100g'] || 0).toFixed(1)}g K: ${(n['carbohydrates_100g'] || 0).toFixed(1)}g F: ${(n['fat_100g'] || 0).toFixed(1)}g`
+        });
+
+        const { wrap: stepperWrap, input: weightInput } = createGramStepper(100, 25);
+
+        const addBtn = el('button', {
+          text: 'Zum Tagebuch hinzufügen',
+          className: 'btn-primary',
+          onclick: () => addFoodProductToMeals(p, weightInput)
+        });
+        addBtn.type = 'button';
+
+        card.appendChild(titleRow);
+        if (subtitle) card.appendChild(subtitle);
+        card.appendChild(macros);
+        card.appendChild(stepperWrap);
+        card.appendChild(addBtn);
+        resultsEl.appendChild(card);
+      });
+    }
+
+    function addFoodProductToMeals(product, weightInput) {
+      const grams = Number(weightInput.value);
+      if (!grams || grams <= 0) {
+        showToast('Bitte eine gültige Menge in Gramm eingeben.', 'error');
+        return;
+      }
+
+      const factor = grams / 100;
+      const n = product.nutriments || {};
+      const name = product.product_name || 'Produkt';
+
+      allData[TODAY_KEY].push({
+        id: Date.now(),
+        name: `🛒 ${name} (${grams}g)`,
+        calories: Math.round((n['energy-kcal_100g'] || 0) * factor),
+        protein: Math.round((n['proteins_100g'] || 0) * factor),
+        carbs: Math.round((n['carbohydrates_100g'] || 0) * factor),
+        fat: Math.round((n['fat_100g'] || 0) * factor)
+      });
+
+      persistData();
+      showToast(`"${name}" (${grams}g) wurde zu den heutigen Mahlzeiten hinzugefügt!`, 'success');
+      document.getElementById('foodSearchResults').innerHTML = '';
+      document.getElementById('foodSearchInput').value = '';
+    }
+
+    async function lookupBarcode(barcode) {
+      const resultsEl = document.getElementById('foodSearchResults');
+      resultsEl.innerHTML = `<div class="loading-line"><span class="spinner"></span>Suche Barcode ${barcode}...</div>`;
+
+      try {
+        const url = `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(barcode)}.json?fields=${OFF_FIELDS}`;
+        const res = await fetch(url);
+        const data = await res.json();
+
+        if (data.status !== 1 || !data.product) {
+          resultsEl.innerHTML = '';
+          resultsEl.appendChild(el('div', { text: 'Kein Produkt zu diesem Barcode gefunden.', style: { color: 'var(--text-muted)', marginTop: '0.5rem' } }));
+          return;
+        }
+
+        renderFoodResults([data.product]);
+      } catch (e) {
+        resultsEl.innerHTML = '';
+        resultsEl.appendChild(el('div', { text: 'Fehler beim Abrufen des Barcodes.', style: { color: '#ef4444', marginTop: '0.5rem' } }));
+      }
+    }
+
+    // ===== BARCODE-SCANNER (Kamera) =====
+    function startBarcodeScanner() {
+      if (typeof Html5Qrcode === 'undefined') {
+        showToast('Scanner-Bibliothek konnte nicht geladen werden. Bitte Internetverbindung prüfen.', 'error');
+        return;
+      }
+
+      document.getElementById('scannerOverlay').style.display = 'flex';
+      html5QrCode = new Html5Qrcode("barcodeReaderRegion");
+
+      const config = {
+        fps: 10,
+        qrbox: { width: 260, height: 140 },
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+          Html5QrcodeSupportedFormats.CODE_128
+        ]
+      };
+
+      html5QrCode.start(
+        { facingMode: "environment" },
+        config,
+        (decodedText) => {
+          stopBarcodeScanner();
+          lookupBarcode(decodedText);
+        },
+        () => { /* kein Treffer in diesem Frame, Scan läuft weiter */ }
+      ).catch(err => {
+        showToast('Kamera konnte nicht gestartet werden. Bitte Kamera-Berechtigung prüfen.', 'error');
+        document.getElementById('scannerOverlay').style.display = 'none';
+      });
+    }
+
+    function stopBarcodeScanner() {
+      document.getElementById('scannerOverlay').style.display = 'none';
+      if (html5QrCode) {
+        html5QrCode.stop().then(() => html5QrCode.clear()).catch(() => {});
+        html5QrCode = null;
+      }
+    }
+  </script>
+</body>
+</html>
