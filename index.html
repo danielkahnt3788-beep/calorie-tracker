@@ -252,7 +252,7 @@
 
       <!-- FOTO ANALYSE -->
       <div class="card">
-        <h2>📸 KI Foto-Analyse</h2>
+        <h2>📸 KI Essens-Analyse</h2>
         <div class="image-source-row">
           <button type="button" class="btn-primary" data-action="openFileInput" data-arg="imageInputCamera">📷 Kamera</button>
           <button type="button" class="btn-secondary" data-action="openFileInput" data-arg="imageInputGallery">🖼️ Galerie</button>
@@ -262,7 +262,11 @@
         <!-- Kein capture-Attribut → öffnet die Bildergalerie/Dateiauswahl -->
         <input type="file" id="imageInputGallery" accept="image/*" style="display:none">
         <div id="selectedImagePreview" style="margin-top: 0.6rem; font-size: 0.85rem; color: var(--text-muted);"></div>
-        <button type="button" class="btn-primary" style="margin-top: 0.6rem;" data-action="analyzeMealImage">Essen analysieren</button>
+
+        <label for="mealDescriptionInput" style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.8rem; display: block;">Oder (zusätzlich) dein Essen kurz beschreiben:</label>
+        <textarea id="mealDescriptionInput" placeholder="z.B. Große Portion Spaghetti Bolognese mit geriebenem Parmesan" style="min-height: 64px; resize: vertical;"></textarea>
+
+        <button type="button" class="btn-primary" style="margin-top: 0.6rem;" data-action="analyzeMeal">Essen analysieren</button>
         <div id="imageAnalysisOutput" style="margin-top: 0.8rem; font-size: 0.9rem; white-space: pre-line;" aria-live="polite"></div>
       </div>
 
@@ -535,7 +539,7 @@
       scrollToMealList: () => scrollToMealList(),
       evaluateDayWithAI: () => evaluateDayWithAI(),
       openFileInput: (arg) => document.getElementById(arg).click(),
-      analyzeMealImage: () => analyzeMealImage(),
+      analyzeMeal: () => analyzeMeal(),
       searchFoodDatabase: () => searchFoodDatabase(),
       startBarcodeScanner: () => startBarcodeScanner(),
       stopBarcodeScanner: () => stopBarcodeScanner(),
@@ -1345,26 +1349,14 @@ Gib eine kurze Einschätzung (max. 4-5 Sätze, normaler Fließtext, KEIN JSON, K
       document.getElementById('selectedImagePreview').textContent = '';
       document.getElementById('imageInputCamera').value = '';
       document.getElementById('imageInputGallery').value = '';
+      document.getElementById('mealDescriptionInput').value = '';
     }
 
-    async function analyzeMealImage() {
-      const output = document.getElementById('imageAnalysisOutput');
-
-      if (!selectedImageFile) {
-        showToast("Bitte wähle zuerst ein Bild über Kamera oder Galerie aus.", 'error');
-        return;
-      }
-
-      output.innerHTML = '<span class="spinner"></span>Analysiere Bild mit KI...';
-
-      const reader = new FileReader();
-      reader.onload = async function() {
-        const base64Data = reader.result.split(',')[1];
-        const mimeType = selectedImageFile.type;
-
-        const prompt = `Analysiere dieses Essen. Schätze zunächst das Gewicht der abgebildeten Portion in Gramm. Schätze anschließend die Kalorien und Makronährstoffe (Eiweiß, Kohlenhydrate, Fett) für GENAU diese geschätzte Portion (nicht pro 100g).
-Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown:
-{
+    // Baut den passenden Analyse-Prompt je nachdem, ob ein Foto, eine
+    // Textbeschreibung oder beides vorliegt. Bei Kombination hilft die
+    // Beschreibung der KI, Mengen/Zutaten auf dem Foto besser einzuordnen.
+    function buildMealAnalysisPrompt(hasImage, description) {
+      const jsonFormat = `{
   "name": "Name des Gerichts",
   "feedback": "Erklärung zur Schätzung",
   "estimated_grams": 0,
@@ -1374,24 +1366,68 @@ Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown:
   "fat": 0
 }`;
 
-        const responseText = await callGeminiInteractions(prompt, base64Data, mimeType);
-        if (!responseText) { output.innerText = ''; return; }
+      if (hasImage && description) {
+        return `Analysiere dieses Essen anhand des Fotos. Nutze zusätzlich diese Beschreibung der Person zur besseren Einordnung von Menge und Zutaten: "${description}".
+Schätze zunächst das Gewicht der Portion in Gramm. Schätze anschließend die Kalorien und Makronährstoffe (Eiweiß, Kohlenhydrate, Fett) für GENAU diese geschätzte Portion (nicht pro 100g).
+Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown:
+${jsonFormat}`;
+      }
 
-        try {
-          const result = extractJson(responseText);
+      if (hasImage) {
+        return `Analysiere dieses Essen. Schätze zunächst das Gewicht der abgebildeten Portion in Gramm. Schätze anschließend die Kalorien und Makronährstoffe (Eiweiß, Kohlenhydrate, Fett) für GENAU diese geschätzte Portion (nicht pro 100g).
+Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown:
+${jsonFormat}`;
+      }
 
-          if (!result.name) {
-            throw new Error('Antwort enthält nicht die erwarteten Felder.');
-          }
+      return `Ein Nutzer beschreibt sein Essen so: "${description}".
+Schätze anhand dieser Beschreibung eine realistische Portionsgröße in Gramm (falls die Menge nicht genannt wird, nimm eine übliche Portionsgröße an) sowie die Kalorien und Makronährstoffe (Eiweiß, Kohlenhydrate, Fett) für GENAU diese Portion.
+Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown:
+${jsonFormat}`;
+    }
 
-          // Nicht direkt übernehmen: erst Mengen-Vorschau zeigen, damit die
-          // Menge in 20g-Schritten korrigiert werden kann, bevor bestätigt wird.
-          renderMealAnalysisPreview(result, output);
-        } catch (err) {
-          output.innerText = "Antwort erhalten, aber JSON konnte nicht gelesen werden:\n" + responseText;
+    // Verarbeitet die Gemini-Antwort einheitlich für Foto- und/oder
+    // Text-Analyse und zeigt bei Erfolg die anpassbare Mengen-Vorschau.
+    function handleMealAnalysisResponse(responseText, output) {
+      if (!responseText) { output.innerText = ''; return; }
+      try {
+        const result = extractJson(responseText);
+        if (!result.name) {
+          throw new Error('Antwort enthält nicht die erwarteten Felder.');
         }
-      };
-      reader.readAsDataURL(selectedImageFile);
+        // Nicht direkt übernehmen: erst Mengen-Vorschau zeigen, damit die
+        // Menge in 20g-Schritten korrigiert werden kann, bevor bestätigt wird.
+        renderMealAnalysisPreview(result, output);
+      } catch (err) {
+        output.innerText = "Antwort erhalten, aber JSON konnte nicht gelesen werden:\n" + responseText;
+      }
+    }
+
+    async function analyzeMeal() {
+      const output = document.getElementById('imageAnalysisOutput');
+      const description = document.getElementById('mealDescriptionInput').value.trim();
+
+      if (!selectedImageFile && !description) {
+        showToast("Bitte ein Foto auswählen oder dein Essen kurz beschreiben.", 'error');
+        return;
+      }
+
+      output.innerHTML = '<span class="spinner"></span>Analysiere Essen mit KI...';
+
+      if (selectedImageFile) {
+        const reader = new FileReader();
+        reader.onload = async function() {
+          const base64Data = reader.result.split(',')[1];
+          const mimeType = selectedImageFile.type;
+          const prompt = buildMealAnalysisPrompt(true, description);
+          const responseText = await callGeminiInteractions(prompt, base64Data, mimeType);
+          handleMealAnalysisResponse(responseText, output);
+        };
+        reader.readAsDataURL(selectedImageFile);
+      } else {
+        const prompt = buildMealAnalysisPrompt(false, description);
+        const responseText = await callGeminiInteractions(prompt);
+        handleMealAnalysisResponse(responseText, output);
+      }
     }
 
     // Zeigt das KI-Analyseergebnis als Vorschau mit anpassbarer Menge
