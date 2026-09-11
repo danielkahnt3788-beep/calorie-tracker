@@ -6,7 +6,7 @@
   <title>Kalorien Tracker PWA</title>
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icon-192.png">
-  <meta name="theme-color" content="#2563eb">
+  <meta name="theme-color" content="#0f6e56">
   <!-- iOS berücksichtigt manifest.json bislang nur teilweise, daher
        zusätzlich die klassischen Apple-Meta-Tags für den Standalone-
        Modus (kein Safari-Rahmen) beim "Zum Home-Bildschirm"-Icon -->
@@ -22,6 +22,9 @@
       --text: #0f172a;
       --text-muted: #64748b;
       --border: #e2e8f0;
+      --header-bg: #0f6e56;
+      --primary-card-bg: #e7f6f1;
+      --primary-card-border: #bfe8dc;
     }
 
     body.dark {
@@ -30,15 +33,20 @@
       --text: #f1f5f9;
       --text-muted: #94a3b8;
       --border: #334155;
+      --header-bg: #0b4a3a;
+      --primary-card-bg: #113c32;
+      --primary-card-border: #1f5c4c;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
     body { background-color: var(--bg); color: var(--text); padding-bottom: 76px; transition: background-color .2s, color .2s; }
 
-    header { background: var(--primary); color: white; padding: 0.65rem 1rem; position: sticky; top: 0; z-index: 10; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    header { background: var(--header-bg); color: white; padding: 0.45rem 1rem; position: sticky; top: 0; z-index: 10; box-shadow: 0 1px 3px rgba(0,0,0,0.12); transition: background-color .2s ease; }
     .header-inner { position: relative; display: flex; align-items: center; justify-content: center; max-width: 600px; margin: 0 auto; }
-    header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: 0.2px; }
-    .sync-indicator { position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; background: rgba(255,255,255,0.25); transition: background-color .3s; cursor: default; }
+    header h1 { font-size: 0.95rem; font-weight: 600; letter-spacing: 0.2px; display: inline-flex; align-items: center; gap: 0.4rem; }
+    .icon { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .icon svg { display: block; }
+    .sync-indicator { position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; background: rgba(255,255,255,0.2); transition: background-color .3s; cursor: default; }
     .sync-indicator.ok { background: #10b981; }
     .sync-indicator.error { background: #ef4444; }
     .sync-indicator.syncing { background: #eab308; }
@@ -50,15 +58,15 @@
       right: 0;
       top: 50%;
       transform: translateY(-50%);
-      width: 30px;
-      height: 30px;
+      width: 26px;
+      height: 26px;
       padding: 0;
       margin: 0;
       border: none;
       border-radius: 50%;
-      background: rgba(255,255,255,0.25);
+      background: rgba(255,255,255,0.2);
       color: white;
-      font-size: 1rem;
+      font-size: 0.9rem;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -72,7 +80,7 @@
     /* Untere Icon-Navigation */
     nav.bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; display: flex; justify-content: space-around; background: var(--card-bg); border-top: 1px solid var(--border); padding: 0.3rem 0 calc(0.3rem + env(safe-area-inset-bottom, 0px)); z-index: 50; }
     nav.bottom-nav button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; background: none; border: none; color: var(--text-muted); padding: 0.35rem 0.1rem; cursor: pointer; border-radius: 8px; font-size: 0.68rem; font-weight: 600; transition: background-color .15s ease, color .15s ease; }
-    nav.bottom-nav button .nav-icon { font-size: 1.35rem; line-height: 1; transition: transform .15s ease; }
+    nav.bottom-nav button .nav-icon { display: inline-flex; line-height: 1; transition: transform .15s ease; }
     nav.bottom-nav button.active { color: var(--primary); background: rgba(37, 99, 235, 0.12); }
     nav.bottom-nav button.active .nav-icon { transform: scale(1.08); }
     body.dark nav.bottom-nav button.active { background: rgba(37, 99, 235, 0.28); }
@@ -83,6 +91,10 @@
     @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 
     .card { background: var(--card-bg); border-radius: 12px; padding: 1.2rem; margin-bottom: 1rem; border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    /* Tagesübersicht ist der wichtigste Bereich im Dashboard - eine dezente
+       Grün-Tönung (passend zum Header) hebt sie von den übrigen, neutralen
+       Cards ab, ohne zusätzliche Rahmen/Schatten-Stärke zu brauchen. */
+    .card.primary-card { background: var(--primary-card-bg); border-color: var(--primary-card-border); }
     .card h2 { font-size: 1.1rem; margin-bottom: 0.8rem; color: var(--text); }
 
     .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; text-align: center; margin-top: 1rem; }
@@ -103,7 +115,7 @@
     .calorie-ring-track { fill: none; stroke: var(--border); stroke-width: 14; }
     .calorie-ring-progress { fill: none; stroke: #10b981; stroke-width: 14; stroke-linecap: round; transition: stroke-dashoffset .5s ease, stroke .3s ease; }
     .calorie-ring-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-    .calorie-ring-value { font-size: 2.1rem; font-weight: bold; color: var(--primary); }
+    .calorie-ring-value { font-size: 2.1rem; font-weight: bold; color: #10b981; transition: color .3s ease; }
     .calorie-ring-label { font-size: 0.8rem; color: var(--text-muted); }
     /* Der Ring ist jetzt ein <button> - generische button-Styles zurücksetzen */
     button.calorie-ring-wrap { padding: 0; margin: 0; border: none; background: none; font: inherit; color: inherit; }
@@ -120,7 +132,7 @@
 
     /* Wisch-zum-Löschen */
     li.swipe-item { display: block; padding: 0; overflow: hidden; position: relative; }
-    .swipe-delete-bg { position: absolute; inset: 0; background: #ef4444; color: white; display: flex; align-items: center; justify-content: flex-end; padding-right: 1.2rem; font-weight: 600; font-size: 0.85rem; }
+    .swipe-delete-bg { position: absolute; inset: 0; background: #ef4444; color: white; display: flex; align-items: center; justify-content: flex-end; gap: 6px; padding-right: 1.2rem; font-weight: 600; font-size: 0.85rem; }
     .swipe-content { position: relative; background: var(--card-bg); touch-action: pan-y; }
     li.swipe-item .swipe-content.meal-row { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 0; border-bottom: 1px solid var(--border); }
     .swipe-hint { text-align: center; font-size: 0.7rem; color: var(--text-muted); margin-top: 0.3rem; }
@@ -153,7 +165,7 @@
     /* KI-Bewertungs-Button neben dem Ring: gleiche Breite wie die Serie
        links, damit der Ring optisch mittig bleibt. */
     .ai-eval-btn { width: 64px; flex-shrink: 0; margin-top: 0; padding: 0.5rem 0.3rem; font-size: 0.7rem; line-height: 1.2; }
-    .streak-icon { font-size: 1.4rem; transition: font-size .3s ease; }
+    .streak-icon { display: inline-flex; transition: transform .3s ease; color: #f97316; }
     .streak-value { font-weight: bold; margin-top: 0.15rem; transition: font-size .3s ease; font-size: 0.85rem; }
 
     /* Einstellungen: Zeilen & Umschalter */
@@ -216,7 +228,7 @@
 
     /* Leere Zustände */
     .empty-state { text-align: center; padding: 1.6rem 0.5rem; color: var(--text-muted); }
-    .empty-state .empty-icon { font-size: 2.2rem; display: block; margin-bottom: 0.5rem; }
+    .empty-state .empty-icon { display: flex; justify-content: center; margin-bottom: 0.5rem; color: var(--text-muted); }
     .empty-state .empty-text { font-size: 0.9rem; }
 
     /* Ladespinner */
@@ -321,7 +333,7 @@
         padding: 0.7rem 0.9rem;
         font-size: 0.85rem;
       }
-      nav.bottom-nav button .nav-icon { font-size: 1.2rem; }
+      nav.bottom-nav button .nav-icon svg { width: 18px; height: 18px; }
 
       #toastContainer { left: calc(50% + (var(--sidebar-width) / 2)); }
 
@@ -348,9 +360,13 @@
 
   <header>
     <div class="header-inner">
-      <div id="syncIndicator" class="sync-indicator local" role="status" aria-live="polite" title="Initialisiere..." aria-label="Initialisiere...">☁️</div>
-      <h1>🥗 Kalorien Tracker</h1>
-      <button type="button" id="settingsBtn" class="settings-btn" data-action="switchPage" data-arg="settings" aria-label="Einstellungen öffnen" title="Einstellungen">⚙️</button>
+      <div id="syncIndicator" class="sync-indicator local" role="status" aria-live="polite" title="Initialisiere..." aria-label="Initialisiere...">
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.6-7.96A5 5 0 0 1 16 8.06 4.5 4.5 0 0 1 16.5 18H7z"/></svg>
+      </div>
+      <h1><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 13a8 8 0 0 0 16 0z" fill="currentColor"/><ellipse cx="12" cy="8" rx="3" ry="4" fill="currentColor" opacity="0.85"/><ellipse cx="8.5" cy="9.5" rx="2.2" ry="3" fill="currentColor" opacity="0.7"/><ellipse cx="15.5" cy="9.5" rx="2.2" ry="3" fill="currentColor" opacity="0.7"/></svg></span> Kalorien Tracker</h1>
+      <button type="button" id="settingsBtn" class="settings-btn" data-action="switchPage" data-arg="settings" aria-label="Einstellungen öffnen" title="Einstellungen">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a7.97 7.97 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a8 8 0 0 0-1.7-1L14.9 3h-4l-.4 2.9a8 8 0 0 0-1.7 1l-2.5-1-2 3.5L6.4 11a7.97 7.97 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a8 8 0 0 0 1.7 1l.4 2.9h4l.4-2.9a8 8 0 0 0 1.7-1l2.5 1 2-3.5z"/></svg>
+      </button>
     </div>
   </header>
 
@@ -360,11 +376,11 @@
 
     <!-- SEITE 1: DASHBOARD -->
     <div id="pageDashboard" class="page active">
-      <div class="card wide">
+      <div class="card wide primary-card">
         <h2>Tagesübersicht (<span id="currentDate"></span>)</h2>
         <div class="dashboard-top-row">
           <div class="streak-inline" title="Tage in Folge im Kalorienlimit">
-            <div id="streakIcon" class="streak-icon" aria-hidden="true">🔥</div>
+            <div id="streakIcon" class="streak-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M12 2c1 3-2 4-2 7a4 4 0 0 0 8 0c0-1-.4-2-1-3 1.5.8 3 2.8 3 5.5A6.5 6.5 0 0 1 6.5 18 6.5 6.5 0 0 1 5 12.5C5 8 8 6 9 3c.3 1.5 1 2 2 2s1.3-1.5 1-3z"/></svg></div>
             <div id="streakValue" class="streak-value">0 Tage</div>
           </div>
           <button type="button" class="calorie-ring-wrap" data-action="scrollToMealList" aria-label="Zu den heutigen Mahlzeiten springen">
@@ -377,21 +393,21 @@
               <span class="calorie-ring-label">/ <span id="calorieLimitDisplay">2200</span> kcal</span>
             </div>
           </button>
-          <button type="button" class="btn-secondary ai-eval-btn" data-action="evaluateDayWithAI">🤖 KI-Check</button>
+          <button type="button" class="btn-secondary ai-eval-btn" data-action="evaluateDayWithAI"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M12 2l1.6 5.4L19 9l-5.4 1.6L12 16l-1.6-5.4L5 9l5.4-1.6z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg></span> KI-Check</button>
         </div>
         <div class="stat-grid">
           <div class="stat-box">
-            <div id="totalProtein" class="stat-value" style="color: #ef4444;">0g</div>
+            <div id="totalProtein" class="stat-value">0g</div>
             <div class="stat-label">Eiweiß</div>
             <div class="macro-bar-track"><div id="proteinBar" class="macro-bar-fill" style="background:#ef4444; width:0%;"></div></div>
           </div>
           <div class="stat-box">
-            <div id="totalCarbs" class="stat-value" style="color: #eab308;">0g</div>
+            <div id="totalCarbs" class="stat-value">0g</div>
             <div class="stat-label">Kohlenhydrate</div>
             <div class="macro-bar-track"><div id="carbsBar" class="macro-bar-fill" style="background:#eab308; width:0%;"></div></div>
           </div>
           <div class="stat-box">
-            <div id="totalFat" class="stat-value" style="color: #10b981;">0g</div>
+            <div id="totalFat" class="stat-value">0g</div>
             <div class="stat-label">Fett</div>
             <div class="macro-bar-track"><div id="fatBar" class="macro-bar-fill" style="background:#10b981; width:0%;"></div></div>
           </div>
@@ -401,10 +417,10 @@
 
       <!-- FOTO ANALYSE -->
       <div class="card">
-        <h2>📸 KI Essens-Analyse</h2>
+        <h2><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M12 2l1.6 5.4L19 9l-5.4 1.6L12 16l-1.6-5.4L5 9l5.4-1.6z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg></span> KI Essens-Analyse</h2>
         <div class="image-source-row">
-          <button type="button" class="btn-primary" data-action="openFileInput" data-arg="imageInputCamera">📷 Kamera</button>
-          <button type="button" class="btn-secondary" data-action="openFileInput" data-arg="imageInputGallery">🖼️ Galerie</button>
+          <button type="button" class="btn-primary" data-action="openFileInput" data-arg="imageInputCamera"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13.5" r="3.3"/></svg></span> Kamera</button>
+          <button type="button" class="btn-secondary" data-action="openFileInput" data-arg="imageInputGallery"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="8.5" cy="9.5" r="1.5" fill="currentColor" stroke="none"/><path d="M4 17l5-5 4 4 3-3 4 4"/></svg></span> Galerie</button>
         </div>
         <!-- capture="environment" erzwingt auf unterstützten Geräten direkt die Kamera -->
         <input type="file" id="imageInputCamera" accept="image/*" capture="environment" style="display:none">
@@ -421,11 +437,11 @@
 
       <!-- PRODUKTSUCHE / BARCODE -->
       <div class="card">
-        <h2>🛒 Produktsuche & Barcode-Scanner</h2>
+        <h2><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="20" r="1.4" fill="currentColor" stroke="none"/><circle cx="18" cy="20" r="1.4" fill="currentColor" stroke="none"/><path d="M3 4h2l2.2 11h11l1.8-8H6.2"/></svg></span> Produktsuche & Barcode-Scanner</h2>
         <label for="foodSearchInput" style="position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap;">Lebensmittel suchen</label>
         <input type="text" id="foodSearchInput" placeholder="z.B. DM Hafermilch">
         <button type="button" class="btn-primary" data-action="searchFoodDatabase">Produkt suchen</button>
-        <button type="button" class="btn-secondary" style="margin-top:0.5rem;" data-action="startBarcodeScanner">📷 Barcode scannen</button>
+        <button type="button" class="btn-secondary" style="margin-top:0.5rem;" data-action="startBarcodeScanner"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M4 7V4h3M20 7V4h-3M4 17v3h3M20 17v3h-3"/><path d="M7 8v8M10 8v8M13 8v8M16 8v8"/></svg></span> Barcode scannen</button>
         <div id="foodSearchResults" aria-live="polite"></div>
       </div>
 
@@ -440,7 +456,7 @@
       <!-- WOCHENÜBERSICHT -->
       <div class="card wide">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 0.5rem;">
-          <h2 style="margin-bottom: 0;">📅 Wochenübersicht</h2>
+          <h2 style="margin-bottom: 0;"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 9.5h16M8 3v4M16 3v4"/></svg></span> Wochenübersicht</h2>
           <label class="switch" title="Makro-Anteile statt einfarbiger Balken anzeigen">
             <input type="checkbox" id="weekMacroToggle">
             <span class="slider"></span>
@@ -461,7 +477,7 @@
 
       <!-- REZEPT GENERATOR -->
       <div class="card">
-        <h2>👨‍🍳 KI Rezept-Generator</h2>
+        <h2><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M12 2l1.6 5.4L19 9l-5.4 1.6L12 16l-1.6-5.4L5 9l5.4-1.6z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg></span> KI Rezept-Generator</h2>
         <label style="font-size: 0.85rem; color: var(--text-muted);" for="recipeMealType">Mahlzeit:</label>
         <select id="recipeMealType">
           <option value="breakfast">🌅 Frühstück</option>
@@ -485,7 +501,7 @@
       </div>
 
       <div class="card">
-        <h2>📖 Gespeicherte Rezepte</h2>
+        <h2><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H12v18H6.5A2.5 2.5 0 0 1 4 18.5z"/><path d="M20 5.5A2.5 2.5 0 0 0 17.5 3H12v18h5.5a2.5 2.5 0 0 0 2.5-2.5z"/></svg></span> Gespeicherte Rezepte</h2>
         <label for="recipeSearchInput" style="position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap;">Rezept durchsuchen</label>
         <input type="text" id="recipeSearchInput" placeholder="Rezept durchsuchen...">
         <div class="recipe-filters">
@@ -509,7 +525,7 @@
     <div id="pageSettings" class="page">
 
       <div class="card">
-        <h2>🎯 Persönliches Kalorienlimit</h2>
+        <h2><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/></svg></span> Persönliches Kalorienlimit</h2>
         <div class="settings-row">
           <label style="font-size: 0.85rem; color: var(--text-muted);" for="calorieLimitInput">Tageslimit (kcal)</label>
           <input type="number" id="calorieLimitInput" min="500" step="50" value="2200">
@@ -518,7 +534,7 @@
       </div>
 
       <div class="card">
-        <h2>⚖️ Makro-Ziele</h2>
+        <h2><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18M6 7h12M6 7l-3 6h6zM18 7l-3 6h6z"/><path d="M4 13a3 3 0 0 0 6 0M14 13a3 3 0 0 0 6 0"/></svg></span> Makro-Ziele</h2>
         <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.3rem;">Zielwerte werden aus deinem Körpergewicht berechnet (g pro kg), nicht aus dem Kalorienlimit.</p>
         <div class="settings-row">
           <label style="font-size: 0.85rem; color: var(--text-muted);" for="bodyWeightInput">Körpergewicht (kg)</label>
@@ -556,7 +572,7 @@
       </div>
 
       <div class="card">
-        <h2>🎨 Darstellung</h2>
+        <h2><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18c1.3 0 1.8-.9 1.3-1.9-.3-.6.1-1.3.8-1.3H16a4 4 0 0 0 4-4c0-6-3.6-10.8-8-10.8z"/><circle cx="8" cy="10" r="1.1" fill="currentColor" stroke="none"/><circle cx="12" cy="7.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="16" cy="10" r="1.1" fill="currentColor" stroke="none"/></svg></span> Darstellung</h2>
         <div class="settings-row">
           <label style="font-size: 0.9rem;" for="darkModeToggle">Dark Mode</label>
           <label class="switch">
@@ -586,9 +602,9 @@
 
   <!-- UNTERE ICON-NAVIGATION -->
   <nav class="bottom-nav">
-    <button type="button" id="navDashboard" class="active" data-action="switchPage" data-arg="dashboard"><span class="nav-icon" aria-hidden="true">🏠</span>Dashboard</button>
-    <button type="button" id="navHistory" data-action="switchPage" data-arg="history"><span class="nav-icon" aria-hidden="true">📜</span>Historie</button>
-    <button type="button" id="navRecipes" data-action="switchPage" data-arg="recipes"><span class="nav-icon" aria-hidden="true">📖</span>Rezepte</button>
+    <button type="button" id="navDashboard" class="active" data-action="switchPage" data-arg="dashboard"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10v9h12v-9"/><path d="M10 19v-5h4v5"/></svg></span>Dashboard</button>
+    <button type="button" id="navHistory" data-action="switchPage" data-arg="history"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></svg></span>Historie</button>
+    <button type="button" id="navRecipes" data-action="switchPage" data-arg="recipes"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H12v18H6.5A2.5 2.5 0 0 1 4 18.5z"/><path d="M20 5.5A2.5 2.5 0 0 0 17.5 3H12v18h5.5a2.5 2.5 0 0 0 2.5-2.5z"/></svg></span>Rezepte</button>
   </nav>
 
   <!-- BARCODE SCANNER OVERLAY -->
@@ -720,6 +736,26 @@
       if (opts.style) Object.assign(node.style, opts.style);
       if (opts.onclick) node.addEventListener('click', opts.onclick);
       return node;
+    }
+
+    // Kleines, selbst gehostetes SVG-Icon-Set (keine externe Icon-Font, kein
+    // CDN) - konsistent mit den Icons im statischen HTML weiter oben. Wird
+    // ausschließlich mit diesen fest hinterlegten, eigenen SVG-Strings
+    // befüllt, nie mit AI- oder Nutzereingaben - daher ist innerHTML hier
+    // unbedenklich, anders als bei nutzergenerierten Inhalten.
+    const ICONS = {
+      plate: '<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/></svg>',
+      history: '<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>',
+      book: '<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H12v18H6.5A2.5 2.5 0 0 1 4 18.5z"/><path d="M20 5.5A2.5 2.5 0 0 0 17.5 3H12v18h5.5a2.5 2.5 0 0 0 2.5-2.5z"/></svg>',
+      search: '<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-5-5"/></svg>',
+      trash: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7h14M9 7V5h6v2M6 7l1 13h10l1-13"/><path d="M10 11v6M14 11v6"/></svg>'
+    };
+
+    function iconEl(name, opts = {}) {
+      const wrap = el('span', { className: 'icon' + (opts.className ? ' ' + opts.className : '') });
+      wrap.innerHTML = ICONS[name] || '';
+      wrap.setAttribute('aria-hidden', 'true');
+      return wrap;
     }
 
     // ===== ZENTRALE EVENT-DELEGATION FÜR data-action BUTTONS =====
@@ -857,12 +893,12 @@
       // die Zeile als Alternative, ohne "wischen" zu müssen.
       const hoverDeleteBtn = el('button', {
         className: 'hover-delete-btn',
-        text: '🗑️',
         onclick: async (e) => {
           e.stopPropagation();
           await onDelete();
         }
       });
+      hoverDeleteBtn.innerHTML = ICONS.trash;
       hoverDeleteBtn.type = 'button';
       hoverDeleteBtn.setAttribute('aria-label', 'Eintrag löschen');
       contentEl.appendChild(hoverDeleteBtn);
@@ -1197,6 +1233,11 @@
       if (totalCals / limit >= 1) color = '#ef4444';
       else if (totalCals / limit >= 0.8) color = '#eab308';
       ring.style.stroke = color;
+
+      // Die große Zahl übernimmt die Ring-Farbe als zweiten Indikator,
+      // statt permanent Blau zu sein - Grün/Gelb/Rot sagt direkt, wie der
+      // Stand ist, ohne erst auf den Ring schauen zu müssen.
+      document.getElementById('totalCalories').style.color = color;
     }
 
     function computeStreak() {
@@ -1223,7 +1264,7 @@
       const clamped = Math.min(Math.max(streak, 0), 10);
       const growth = clamped / 10; // 0 bis 1
 
-      iconEl.style.fontSize = (1.4 + growth * 1.4) + 'rem';   // 1.4rem -> 2.8rem
+      iconEl.style.transform = 'scale(' + (1 + growth) + ')';   // 1x -> 2x
       valueEl.style.fontSize = (0.85 + growth * 0.65) + 'rem'; // 0.85rem -> 1.5rem
       valueEl.textContent = streak + (streak === 1 ? ' Tag' : ' Tage');
     }
@@ -1304,6 +1345,16 @@
       return wrap;
     }
 
+    // Färbt eine Makro-Zahl nur ein, wenn das Ziel deutlich (>5%)
+    // überschritten wird - im normalen Bereich bleibt sie neutral
+    // (var(--text)), analog dazu, wie der Kalorien-Ring nur bei
+    // Überschreitung rot wird statt immer eine Statusfarbe zu zeigen.
+    function applyMacroValueColor(elId, value, target, colorHex) {
+      const el = document.getElementById(elId);
+      const isOver = target > 0 && value > target * 1.05;
+      el.style.color = isOver ? colorHex : 'var(--text)';
+    }
+
     function updateDashboard() {
       const todayMeals = allData[TODAY_KEY] || [];
       const totals = dayTotals(TODAY_KEY);
@@ -1317,7 +1368,7 @@
         const emptyLi = document.createElement('li');
         emptyLi.style.borderBottom = 'none';
         const emptyState = el('div', { className: 'empty-state' });
-        emptyState.appendChild(el('span', { className: 'empty-icon', text: '🍽️' }));
+        emptyState.appendChild(iconEl('plate', { className: 'empty-icon' }));
         const emptyText = el('span', { className: 'empty-text' });
         emptyText.append('Noch keine Mahlzeit erfasst.', document.createElement('br'), 'Nutze Foto-Analyse, Rezept oder Produktsuche.');
         emptyState.appendChild(emptyText);
@@ -1329,7 +1380,9 @@
           const li = document.createElement('li');
           li.className = 'swipe-item';
 
-          const deleteBg = el('div', { className: 'swipe-delete-bg', text: 'Löschen' });
+          const deleteBg = el('div', { className: 'swipe-delete-bg' });
+          deleteBg.appendChild(iconEl('trash'));
+          deleteBg.appendChild(document.createTextNode('Löschen'));
 
           const content = el('div', { className: 'swipe-content meal-row' });
           const infoDiv = el('div');
@@ -1369,6 +1422,14 @@
       document.getElementById('totalCarbs').innerText = totals.carbs + 'g';
       document.getElementById('totalFat').innerText = totals.fat + 'g';
       document.getElementById('calorieLimitDisplay').innerText = limit;
+
+      // Makro-Zahlen bleiben neutral (Textfarbe), solange man im Rahmen des
+      // Ziels liegt - Farbe wird nur zum Signal, wenn ein Ziel deutlich
+      // (>5%) überschritten ist. Die Balken darunter behalten dagegen immer
+      // ihre feste Farbe als Eiweiß/Kohlenhydrate/Fett-"Legende".
+      applyMacroValueColor('totalProtein', totals.protein, targets.protein, '#ef4444');
+      applyMacroValueColor('totalCarbs', totals.carbs, targets.carbs, '#eab308');
+      applyMacroValueColor('totalFat', totals.fat, targets.fat, '#10b981');
 
       document.getElementById('proteinBar').style.width = Math.min((totals.protein / targets.protein) * 100, 100) + '%';
       document.getElementById('carbsBar').style.width = Math.min((totals.carbs / targets.carbs) * 100, 100) + '%';
@@ -1467,7 +1528,7 @@
         const emptyLi = document.createElement('li');
         emptyLi.style.borderBottom = 'none';
         const emptyState = el('div', { className: 'empty-state' });
-        emptyState.appendChild(el('span', { className: 'empty-icon', text: '📜' }));
+        emptyState.appendChild(iconEl('history', { className: 'empty-icon' }));
         emptyState.appendChild(el('span', { className: 'empty-text', text: 'Noch keine Verlaufsdaten vorhanden.' }));
         emptyLi.appendChild(emptyState);
         historyListEl.appendChild(emptyLi);
@@ -2041,12 +2102,12 @@ Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown:
         li.style.borderBottom = 'none';
         const emptyState = el('div', { className: 'empty-state' });
         if (savedRecipes.length === 0) {
-          emptyState.appendChild(el('span', { className: 'empty-icon', text: '📖' }));
+          emptyState.appendChild(iconEl('book', { className: 'empty-icon' }));
           const txt = el('span', { className: 'empty-text' });
           txt.append('Noch keine Rezepte gespeichert.', document.createElement('br'), 'Generiere eines auf dem Dashboard!');
           emptyState.appendChild(txt);
         } else {
-          emptyState.appendChild(el('span', { className: 'empty-icon', text: '🔍' }));
+          emptyState.appendChild(iconEl('search', { className: 'empty-icon' }));
           emptyState.appendChild(el('span', { className: 'empty-text', text: 'Keine Rezepte gefunden.' }));
         }
         li.appendChild(emptyState);
@@ -2058,7 +2119,9 @@ Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown:
         const li = document.createElement('li');
         li.className = 'swipe-item';
 
-        const deleteBg = el('div', { className: 'swipe-delete-bg', text: '🗑️ Löschen' });
+        const deleteBg = el('div', { className: 'swipe-delete-bg' });
+        deleteBg.appendChild(iconEl('trash'));
+        deleteBg.appendChild(document.createTextNode('Löschen'));
 
         const card = el('div', { className: 'recipe-card swipe-content' });
 
