@@ -654,15 +654,18 @@
 
     // Speichert Daten inkl. Zeitstempel, damit beim Laden der neuere
     // Stand (lokal oder Cloud) erkannt werden kann. Sichert zusätzlich
-    // die Rezept-Bibliothek mit, damit sie nicht nur lokal im Browser liegt.
+    // die Rezept-Bibliothek sowie die Zielwert-Schnappschüsse pro Tag mit,
+    // damit sie nicht nur lokal im Browser liegen.
     window.saveDataToCloud = async function(data) {
       if (!db) return;
       try {
         window.setSyncIndicator('syncing', '⏳ Speichere in Cloud...');
         const recipesData = JSON.parse(localStorage.getItem('saved_recipes')) || [];
+        const dailyTargetsData = JSON.parse(localStorage.getItem('daily_targets')) || {};
         await setDoc(doc(db, "users_data", "default_user"), {
           calorie_data: data,
           saved_recipes: recipesData,
+          daily_targets: dailyTargetsData,
           updatedAt: new Date().toISOString()
         });
         window.setSyncIndicator('ok', '☁️ Synchronisiert (' + new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ')');
@@ -672,9 +675,9 @@
       }
     };
 
-    // Gibt {calorie_data, saved_recipes, updatedAt} zurück, damit der
-    // Aufrufer mit dem lokalen Zeitstempel vergleichen kann, statt blind
-    // zu überschreiben.
+    // Gibt {calorie_data, saved_recipes, daily_targets, updatedAt} zurück,
+    // damit der Aufrufer mit dem lokalen Zeitstempel vergleichen kann,
+    // statt blind zu überschreiben.
     window.loadDataFromCloud = async function() {
       if (!db) return null;
       try {
@@ -682,7 +685,12 @@
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
           const d = docSnap.data();
-          return { calorie_data: d.calorie_data, saved_recipes: d.saved_recipes || null, updatedAt: d.updatedAt || null };
+          return {
+            calorie_data: d.calorie_data,
+            saved_recipes: d.saved_recipes || null,
+            daily_targets: d.daily_targets || null,
+            updatedAt: d.updatedAt || null
+          };
         }
       } catch (e) {
         console.error("Fehler beim Cloud-Load:", e);
@@ -706,6 +714,7 @@
     const CUSTOM_PROTEIN_KEY = 'macro_custom_protein';
     const CUSTOM_CARBS_KEY = 'macro_custom_carbs';
     const CUSTOM_FAT_KEY = 'macro_custom_fat';
+    const DAILY_TARGETS_KEY = 'daily_targets';
 
     const MEAL_TYPES = {
       breakfast: { label: 'Frühstück', icon: '🌅', share: 0.25 },
@@ -716,6 +725,10 @@
 
     let allData = JSON.parse(localStorage.getItem('user_calorie_data')) || {};
     let savedRecipes = JSON.parse(localStorage.getItem(RECIPES_KEY)) || [];
+    // Schnappschüsse der pro Tag gültigen Ziele (Kalorienlimit, Gewicht,
+    // Verteilung, daraus berechnete Gramm-Ziele) - damit die Historie auch
+    // dann korrekt bleibt, wenn Gewicht/Verteilung später geändert werden.
+    let dailyTargets = JSON.parse(localStorage.getItem(DAILY_TARGETS_KEY)) || {};
     let currentGeneratedRecipe = null;
     let currentRecipeSavedId = null;
     let html5QrCode = null;
@@ -1025,8 +1038,18 @@
               savedRecipes = cloudResult.saved_recipes;
               localStorage.setItem(RECIPES_KEY, JSON.stringify(savedRecipes));
             }
+            if (cloudResult.daily_targets) {
+              dailyTargets = cloudResult.daily_targets;
+              localStorage.setItem(DAILY_TARGETS_KEY, JSON.stringify(dailyTargets));
+            }
           }
         }
+      }
+
+      // Für "heute" muss immer ein aktueller Zielwert-Schnappschuss existieren
+      // (z.B. bei einem neuen Tag oder beim allerersten Start).
+      if (!dailyTargets[TODAY_KEY]) {
+        snapshotTodayTargets();
       }
 
       updateDashboard();
@@ -1130,6 +1153,36 @@
       };
     }
 
+    // Schreibt einen Schnappschuss der aktuell gültigen Ziele für "heute"
+    // fest. Wird beim App-Start (falls für heute noch keiner existiert)
+    // sowie nach jedem Speichern von Kalorienlimit/Makro-Einstellungen
+    // aufgerufen. Für bereits vergangene Tage wird dieser Schnappschuss nie
+    // mehr verändert - er ist dann "eingefroren".
+    function snapshotTodayTargets() {
+      dailyTargets[TODAY_KEY] = {
+        calorieLimit: getCalorieLimit(),
+        weight: getBodyWeight(),
+        presetKey: getMacroPresetKey(),
+        macroTargets: getMacroTargets()
+      };
+      localStorage.setItem(DAILY_TARGETS_KEY, JSON.stringify(dailyTargets));
+      if (window.saveDataToCloud) {
+        window.saveDataToCloud(allData);
+      }
+    }
+
+    // Liefert die für einen bestimmten Tag gültigen Ziele - aus dem
+    // gespeicherten Schnappschuss, falls vorhanden. Für Tage von vor der
+    // Einführung dieses Features (kein Schnappschuss abgelegt) wird
+    // ersatzweise auf die aktuellen Einstellungen zurückgegriffen.
+    function getTargetsForDate(dateKey) {
+      const snapshot = dailyTargets[dateKey];
+      if (snapshot) {
+        return { calorieLimit: snapshot.calorieLimit, macroTargets: snapshot.macroTargets };
+      }
+      return { calorieLimit: getCalorieLimit(), macroTargets: getMacroTargets() };
+    }
+
     // Blendet die Eingabefelder für die individuelle Verteilung ein/aus,
     // je nachdem ob "Individuell" ausgewählt ist.
     function updateCustomMacroFieldsVisibility() {
@@ -1183,6 +1236,7 @@
 
       localStorage.setItem(BODY_WEIGHT_KEY, weight);
       localStorage.setItem(MACRO_PRESET_KEY, presetKey);
+      snapshotTodayTargets();
 
       showToast('Makro-Ziele gespeichert!', 'success');
       updateMacroTargetsPreview();
@@ -1196,6 +1250,7 @@
         return;
       }
       localStorage.setItem(CALORIE_LIMIT_KEY, val);
+      snapshotTodayTargets();
       showToast('Kalorienlimit gespeichert!', 'success');
       updateDashboard();
     }
@@ -1229,9 +1284,7 @@
       ring.style.strokeDasharray = `${circumference} ${circumference}`;
       ring.style.strokeDashoffset = circumference - pct * circumference;
 
-      let color = '#10b981';
-      if (totalCals / limit >= 1) color = '#ef4444';
-      else if (totalCals / limit >= 0.8) color = '#eab308';
+      let color = calorieStateColor(totalCals, limit);
       ring.style.stroke = color;
 
       // Die große Zahl übernimmt die Ring-Farbe als zweiten Indikator,
@@ -1345,14 +1398,22 @@
       return wrap;
     }
 
+    function macroDeviationColor(value, target, colorHex) {
+      return (target > 0 && value > target * 1.05) ? colorHex : 'var(--text)';
+    }
+
     // Färbt eine Makro-Zahl nur ein, wenn das Ziel deutlich (>5%)
     // überschritten wird - im normalen Bereich bleibt sie neutral
     // (var(--text)), analog dazu, wie der Kalorien-Ring nur bei
     // Überschreitung rot wird statt immer eine Statusfarbe zu zeigen.
     function applyMacroValueColor(elId, value, target, colorHex) {
-      const el = document.getElementById(elId);
-      const isOver = target > 0 && value > target * 1.05;
-      el.style.color = isOver ? colorHex : 'var(--text)';
+      document.getElementById(elId).style.color = macroDeviationColor(value, target, colorHex);
+    }
+
+    function calorieStateColor(totalCals, limit) {
+      if (totalCals / limit >= 1) return '#ef4444';
+      if (totalCals / limit >= 0.8) return '#eab308';
+      return '#10b981';
     }
 
     function updateDashboard() {
@@ -1554,13 +1615,34 @@
         const infoDiv = el('div');
         infoDiv.appendChild(el('strong', { text: date }));
         infoDiv.appendChild(document.createElement('br'));
-        infoDiv.appendChild(el('small', {
-          text: `${groups.length} Mahlzeit(en) · P: ${totals.protein}g K: ${totals.carbs}g F: ${totals.fat}g`,
-          style: { color: 'var(--text-muted)' }
+
+        // Zielwerte, die an DIESEM Tag galten (Schnappschuss) statt der
+        // aktuellen Einstellungen - siehe getTargetsForDate().
+        const dayTargets = getTargetsForDate(date);
+
+        const macroLine = el('small', { style: { color: 'var(--text-muted)' } });
+        macroLine.appendChild(document.createTextNode(`${groups.length} Mahlzeit(en) · P: `));
+        macroLine.appendChild(el('span', {
+          text: `${totals.protein}g`,
+          style: { color: macroDeviationColor(totals.protein, dayTargets.macroTargets.protein, '#ef4444'), fontWeight: '600' }
         }));
+        macroLine.appendChild(document.createTextNode(' K: '));
+        macroLine.appendChild(el('span', {
+          text: `${totals.carbs}g`,
+          style: { color: macroDeviationColor(totals.carbs, dayTargets.macroTargets.carbs, '#eab308'), fontWeight: '600' }
+        }));
+        macroLine.appendChild(document.createTextNode(' F: '));
+        macroLine.appendChild(el('span', {
+          text: `${totals.fat}g`,
+          style: { color: macroDeviationColor(totals.fat, dayTargets.macroTargets.fat, '#10b981'), fontWeight: '600' }
+        }));
+        infoDiv.appendChild(macroLine);
 
         const rightWrap = el('div', { style: { textAlign: 'right' } });
-        rightWrap.appendChild(el('span', { text: `${totals.calories} kcal`, style: { fontWeight: 'bold', color: 'var(--primary)', display: 'block' } }));
+        rightWrap.appendChild(el('span', {
+          text: `${totals.calories} kcal`,
+          style: { fontWeight: 'bold', color: calorieStateColor(totals.calories, dayTargets.calorieLimit), display: 'block' }
+        }));
         rightWrap.appendChild(el('span', { className: 'history-expand-hint', text: 'antippen für Details' }));
 
         summary.appendChild(infoDiv);
