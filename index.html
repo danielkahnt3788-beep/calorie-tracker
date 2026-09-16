@@ -77,6 +77,25 @@
     .settings-btn.active { background: rgba(255,255,255,0.4); }
     .settings-btn:focus-visible { outline: 2px solid white; outline-offset: 2px; }
 
+    /* "+"-Button zum manuellen Hinzufügen einer Mahlzeit */
+    .add-meal-btn {
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      margin: 0;
+      border: none;
+      border-radius: 50%;
+      background: var(--primary);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: background-color .2s ease;
+    }
+    .add-meal-btn:hover { background: var(--primary-hover); }
+
     /* Untere Icon-Navigation */
     nav.bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; display: flex; justify-content: space-around; background: var(--card-bg); border-top: 1px solid var(--border); padding: 0.3rem 0 calc(0.3rem + env(safe-area-inset-bottom, 0px)); z-index: 50; }
     nav.bottom-nav button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; background: none; border: none; color: var(--text-muted); padding: 0.35rem 0.1rem; cursor: pointer; border-radius: 8px; font-size: 0.68rem; font-weight: 600; transition: background-color .15s ease, color .15s ease; }
@@ -244,7 +263,7 @@
     .toast.error { border-left-color: #ef4444; }
 
     /* Eigener Bestätigungs-Dialog (natives <dialog>) */
-    dialog.modal-box { background: var(--card-bg); border-radius: 12px; padding: 1.2rem; max-width: 340px; width: 100%; border: none; margin: auto; color: var(--text); }
+    dialog.modal-box { background: var(--card-bg); border-radius: 12px; padding: 1.2rem; max-width: 340px; width: 100%; max-height: 85vh; overflow-y: auto; border: none; margin: auto; color: var(--text); }
     dialog.modal-box::backdrop { background: rgba(0,0,0,0.5); }
     .modal-box p { margin-bottom: 1rem; font-size: 0.95rem; color: var(--text); }
     .modal-actions { display: flex; gap: 0.6rem; }
@@ -446,7 +465,12 @@
       </div>
 
       <div class="card wide">
-        <h2>Erfasste Mahlzeiten heute</h2>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 0.8rem;">
+          <h2 style="margin-bottom: 0;">Erfasste Mahlzeiten heute</h2>
+          <button type="button" class="add-meal-btn" data-action="openManualEntryDialog" aria-label="Mahlzeit manuell hinzufügen" title="Manuell hinzufügen">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+        </div>
         <ul id="mealList"></ul>
       </div>
     </div>
@@ -623,6 +647,31 @@
     </div>
   </dialog>
 
+  <!-- MANUELLE MAHLZEIT-EINGABE (natives <dialog>) -->
+  <dialog id="manualEntryDialog" class="modal-box">
+    <p style="font-weight: 700; font-size: 1.05rem;">Mahlzeit manuell hinzufügen</p>
+
+    <label for="manualMealName" style="font-size: 0.85rem; color: var(--text-muted); display: block;">Bezeichnung</label>
+    <input type="text" id="manualMealName" placeholder="z.B. Selbstgemachtes Müsli">
+
+    <label for="manualMealCalories" style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.6rem; display: block;">Kalorien (kcal)</label>
+    <input type="number" id="manualMealCalories" min="0" step="1" placeholder="0">
+
+    <label for="manualMealProtein" style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.6rem; display: block;">Eiweiß (g)</label>
+    <input type="number" id="manualMealProtein" min="0" step="0.1" placeholder="0">
+
+    <label for="manualMealCarbs" style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.6rem; display: block;">Kohlenhydrate (g)</label>
+    <input type="number" id="manualMealCarbs" min="0" step="0.1" placeholder="0">
+
+    <label for="manualMealFat" style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.6rem; display: block;">Fett (g)</label>
+    <input type="number" id="manualMealFat" min="0" step="0.1" placeholder="0">
+
+    <div class="modal-actions" style="margin-top: 1rem;">
+      <button type="button" id="manualEntryCancelBtn" class="modal-cancel-btn">Abbrechen</button>
+      <button type="button" id="manualEntrySaveBtn" class="btn-primary">Hinzufügen</button>
+    </div>
+  </dialog>
+
   <!-- Barcode-Scan-Bibliothek (liest EAN/UPC-Barcodes über die Kamera) -->
   <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 
@@ -790,7 +839,8 @@
       saveMacroSettings: () => saveMacroSettings(),
       saveGeminiKey: () => saveGeminiKey(),
       saveFirebaseConfig: () => saveFirebaseConfig(),
-      switchPage: (arg) => switchPage(arg)
+      switchPage: (arg) => switchPage(arg),
+      openManualEntryDialog: () => openManualEntryDialog()
     };
 
     document.addEventListener('click', (e) => {
@@ -999,6 +1049,11 @@
       document.getElementById('customProteinInput').addEventListener('input', updateMacroTargetsPreview);
       document.getElementById('customCarbsInput').addEventListener('input', updateMacroTargetsPreview);
       document.getElementById('customFatInput').addEventListener('input', updateMacroTargetsPreview);
+
+      document.getElementById('manualEntryCancelBtn').addEventListener('click', () => {
+        document.getElementById('manualEntryDialog').close();
+      });
+      document.getElementById('manualEntrySaveBtn').addEventListener('click', saveManualMealEntry);
     }
 
     window.addEventListener('DOMContentLoaded', async () => {
@@ -1253,6 +1308,46 @@
       snapshotTodayTargets();
       showToast('Kalorienlimit gespeichert!', 'success');
       updateDashboard();
+    }
+
+    // ===== MANUELLE MAHLZEIT-EINGABE =====
+    function openManualEntryDialog() {
+      document.getElementById('manualMealName').value = '';
+      document.getElementById('manualMealCalories').value = '';
+      document.getElementById('manualMealProtein').value = '';
+      document.getElementById('manualMealCarbs').value = '';
+      document.getElementById('manualMealFat').value = '';
+      document.getElementById('manualEntryDialog').showModal();
+      document.getElementById('manualMealName').focus();
+    }
+
+    function saveManualMealEntry() {
+      const name = document.getElementById('manualMealName').value.trim();
+      const calories = Number(document.getElementById('manualMealCalories').value);
+      const protein = Number(document.getElementById('manualMealProtein').value) || 0;
+      const carbs = Number(document.getElementById('manualMealCarbs').value) || 0;
+      const fat = Number(document.getElementById('manualMealFat').value) || 0;
+
+      if (!name) {
+        showToast('Bitte eine Bezeichnung eingeben.', 'error');
+        return;
+      }
+      if (!calories || calories <= 0) {
+        showToast('Bitte eine gültige Kalorienzahl eingeben.', 'error');
+        return;
+      }
+
+      allData[TODAY_KEY].push({
+        id: Date.now(),
+        name: name,
+        calories: Math.round(calories),
+        protein: Math.round(protein),
+        carbs: Math.round(carbs),
+        fat: Math.round(fat)
+      });
+      persistData();
+      document.getElementById('manualEntryDialog').close();
+      showToast(`"${name}" wurde zu den heutigen Mahlzeiten hinzugefügt!`, 'success');
     }
 
     function persistData() {
