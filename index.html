@@ -701,8 +701,10 @@
     // verwendet. Ab dem 2.11.2026 erzwingt Firebase App Check ohnehin für
     // AI Logic, daher hier schon aktiv statt nur optional. Score-basierter
     // reCAPTCHA-Enterprise-Website-Schlüssel (kein sichtbares Challenge/
-    // Kästchen), registriert für die Domain danielkahnt3788-beep.github.io.
-    const RECAPTCHA_ENTERPRISE_SITE_KEY = "6LdpMcktAAAAAP9T26GzY8qFp4kvh-eLJ2d3bpyN";
+    // Kästchen), registriert für die Domain danielkahnt3788-beep.github.io -
+    // im richtigen Google-Cloud-Projekt (kalorien-tracker-d7191), nicht im
+    // separaten AI-Studio-Projekt (gen-lang-client-...) wie der erste Key.
+    const RECAPTCHA_ENTERPRISE_SITE_KEY = "6LcDjsktAAAAAFVi3XvnUnBIRxA3Kj6s9eB8uW9Q";
     if (RECAPTCHA_ENTERPRISE_SITE_KEY) {
       try {
         initializeAppCheck(app, {
