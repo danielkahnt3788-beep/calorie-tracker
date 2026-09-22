@@ -674,7 +674,7 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
     import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
     import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
-    import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app-check.js";
+    import { initializeAppCheck, ReCaptchaEnterpriseProvider } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app-check.js";
     import { getAI, getGenerativeModel, GoogleAIBackend } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-ai.js";
 
     // Die Firebase-Projekt-Config ist kein Geheimnis - sie identifiziert nur
@@ -698,15 +698,15 @@
     // App Check: zusätzliche Absicherung, damit nur diese echte App die
     // Firebase-AI-Logic-Anfragen (siehe unten) stellen kann, nicht irgendeine
     // fremde Seite, die zufällig dieselbe (nicht geheime) Firebase-Config
-    // verwendet. Site-Key kommt aus Firebase Console → App Check → App
-    // registrieren → reCAPTCHA v3. Ohne gesetzten Key läuft die App normal
-    // weiter (nur ohne diese zusätzliche Absicherung) - siehe README-Hinweis
-    // im PR.
-    const RECAPTCHA_V3_SITE_KEY = "";
-    if (RECAPTCHA_V3_SITE_KEY) {
+    // verwendet. Ab dem 2.11.2026 erzwingt Firebase App Check ohnehin für
+    // AI Logic, daher hier schon aktiv statt nur optional. Score-basierter
+    // reCAPTCHA-Enterprise-Website-Schlüssel (kein sichtbares Challenge/
+    // Kästchen), registriert für die Domain danielkahnt3788-beep.github.io.
+    const RECAPTCHA_ENTERPRISE_SITE_KEY = "6LdpMcktAAAAAP9T26GzY8qFp4kvh-eLJ2d3bpyN";
+    if (RECAPTCHA_ENTERPRISE_SITE_KEY) {
       try {
         initializeAppCheck(app, {
-          provider: new ReCaptchaV3Provider(RECAPTCHA_V3_SITE_KEY),
+          provider: new ReCaptchaEnterpriseProvider(RECAPTCHA_ENTERPRISE_SITE_KEY),
           isTokenAutoRefreshEnabled: true
         });
       } catch (e) {
