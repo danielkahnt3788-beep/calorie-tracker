@@ -614,11 +614,11 @@
       </div>
 
       <div class="card wide">
-        <h2>Firebase Cloud Einstellungen</h2>
-        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem;">Füge hier dein Firebase Configuration Object ein, um Daten automatisch online zu sichern.</p>
-        <label for="firebaseConfigInput" style="position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap;">Firebase Configuration Object</label>
-        <textarea id="firebaseConfigInput" style="height: 120px; font-family: monospace; font-size: 0.8rem; padding: 0.5rem;" placeholder='{\n  "apiKey": "...",\n  "projectId": "..."\n}'></textarea>
-        <button type="button" class="btn-primary" data-action="saveFirebaseConfig">Firebase Konfiguration Speichern</button>
+        <h2>Cloud-Synchronisierung</h2>
+        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem;">Melde dich mit deinem Google-Konto an, um deine Daten geräteübergreifend zu sichern und zu synchronisieren.</p>
+        <p id="authStatusText" style="font-size: 0.85rem; margin-bottom: 0.5rem;"></p>
+        <button type="button" id="signInBtn" class="btn-primary" data-action="signInWithGoogle">Mit Google anmelden</button>
+        <button type="button" id="signOutBtn" class="btn-secondary" data-action="signOutOfFirebase" style="display:none;">Abmelden</button>
       </div>
     </div>
 
@@ -679,39 +679,106 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
-    let db = null;
+    // Die Firebase-Projekt-Config ist kein Geheimnis - sie identifiziert nur
+    // das Projekt (siehe Firebase-Doku). Der eigentliche Zugriffsschutz sind
+    // die Firestore Security Rules (nur eingeloggte Nutzer:innen dürfen ihr
+    // eigenes Dokument lesen/schreiben) und der Google-Login unten.
+    const firebaseConfig = {
+      apiKey: "AIzaSyD18wqVO8lo2WhxuXJQerjMTncsrR1EGjM",
+      authDomain: "kalorien-tracker-d7191.firebaseapp.com",
+      projectId: "kalorien-tracker-d7191",
+      storageBucket: "kalorien-tracker-d7191.firebasestorage.app",
+      messagingSenderId: "160954404631",
+      appId: "1:160954404631:web:c111442e7b35c88002b152"
+    };
 
-    window.initFirebase = function() {
-      const configStr = localStorage.getItem('firebase_config');
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
+    const googleProvider = new GoogleAuthProvider();
 
-      if (!configStr) {
-        window.setSyncIndicator('local', '💾 Nur lokaler Speicher (kein Firebase konfiguriert)');
-        return;
-      }
+    let currentUser = null;
+    let resolveFirebaseReady;
+    // Löst erst, wenn der erste Auth-Status (eingeloggt oder nicht) bekannt
+    // ist - so kann die Haupt-App warten, bevor sie Cloud-Daten einliest.
+    window.firebaseReady = new Promise((resolve) => { resolveFirebaseReady = resolve; });
 
+    window.signInWithGoogle = async function() {
       try {
-        const firebaseConfig = JSON.parse(configStr);
-        const app = initializeApp(firebaseConfig);
-        db = getFirestore(app);
-        window.setSyncIndicator('ok', '☁️ Firebase Online-Speicher aktiv');
+        await signInWithPopup(auth, googleProvider);
       } catch (e) {
-        console.error("Firebase Fehler:", e);
-        window.setSyncIndicator('error', '⚠️ Firebase Konfigurationsfehler');
+        console.error("Google-Login fehlgeschlagen:", e);
+        window.setSyncIndicator('error', '⚠️ Login fehlgeschlagen');
       }
     };
+
+    window.signOutOfFirebase = async function() {
+      await signOut(auth);
+    };
+
+    // Vor dem Login gab es nur ein einziges, ungeschütztes Dokument
+    // ("default_user"), das jede:r lesen/überschreiben konnte. Beim ersten
+    // Login eines Kontos wird dieser Altbestand einmalig in das eigene,
+    // durch die Security Rules geschützte Dokument (users_data/{uid})
+    // übernommen, damit nichts verloren geht.
+    async function migrateLegacyDataIfNeeded(uid) {
+      const userDocRef = doc(db, "users_data", uid);
+      try {
+        const userSnap = await getDoc(userDocRef);
+        if (userSnap.exists()) return;
+
+        const legacyRef = doc(db, "users_data", "default_user");
+        const legacySnap = await getDoc(legacyRef);
+        if (legacySnap.exists()) {
+          await setDoc(userDocRef, legacySnap.data());
+          console.info("Alte Daten aus 'default_user' wurden in dein Konto übernommen.");
+        }
+      } catch (e) {
+        // Kein Zugriff auf das alte Dokument (z.B. weil die Firestore-Regeln
+        // inzwischen restriktiv sind und es kein "default_user" mehr gibt) -
+        // dann gibt es nichts zu migrieren.
+        console.warn("Migration von Altdaten übersprungen:", e);
+      }
+    }
+
+    onAuthStateChanged(auth, async (user) => {
+      currentUser = user;
+      if (window.updateAuthUI) window.updateAuthUI(user);
+
+      if (user) {
+        window.setSyncIndicator('syncing', '⏳ Verbinde...');
+        await migrateLegacyDataIfNeeded(user.uid);
+
+        // Login nach dem ersten Render (z.B. Klick auf "Mit Google
+        // anmelden") - Cloud-Daten jetzt nachladen und Dashboard neu
+        // zeichnen. Beim allerersten Laden übernimmt DOMContentLoaded das
+        // selbst, sobald firebaseReady auflöst.
+        if (window.appHasRendered && window.mergeCloudDataIntoApp) {
+          await window.mergeCloudDataIntoApp();
+          if (window.updateDashboard) window.updateDashboard();
+        }
+
+        window.setSyncIndicator('ok', '☁️ Angemeldet als ' + (user.displayName || user.email));
+      } else {
+        window.setSyncIndicator('local', '💾 Nur lokaler Speicher (nicht angemeldet)');
+      }
+
+      if (resolveFirebaseReady) { resolveFirebaseReady(); resolveFirebaseReady = null; }
+    });
 
     // Speichert Daten inkl. Zeitstempel, damit beim Laden der neuere
     // Stand (lokal oder Cloud) erkannt werden kann. Sichert zusätzlich
     // die Rezept-Bibliothek sowie die Zielwert-Schnappschüsse pro Tag mit,
     // damit sie nicht nur lokal im Browser liegen.
     window.saveDataToCloud = async function(data) {
-      if (!db) return;
+      if (!currentUser) return;
       try {
         window.setSyncIndicator('syncing', '⏳ Speichere in Cloud...');
         const recipesData = JSON.parse(localStorage.getItem('saved_recipes')) || [];
         const dailyTargetsData = JSON.parse(localStorage.getItem('daily_targets')) || {};
-        await setDoc(doc(db, "users_data", "default_user"), {
+        await setDoc(doc(db, "users_data", currentUser.uid), {
           calorie_data: data,
           saved_recipes: recipesData,
           daily_targets: dailyTargetsData,
@@ -728,9 +795,9 @@
     // damit der Aufrufer mit dem lokalen Zeitstempel vergleichen kann,
     // statt blind zu überschreiben.
     window.loadDataFromCloud = async function() {
-      if (!db) return null;
+      if (!currentUser) return null;
       try {
-        const docRef = doc(db, "users_data", "default_user");
+        const docRef = doc(db, "users_data", currentUser.uid);
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
           const d = docSnap.data();
@@ -746,8 +813,6 @@
       }
       return null;
     };
-
-    window.initFirebase();
   </script>
 
   <!-- HAUPT APP LOGIK -->
@@ -838,7 +903,8 @@
       saveCalorieLimit: () => saveCalorieLimit(),
       saveMacroSettings: () => saveMacroSettings(),
       saveGeminiKey: () => saveGeminiKey(),
-      saveFirebaseConfig: () => saveFirebaseConfig(),
+      signInWithGoogle: () => window.signInWithGoogle(),
+      signOutOfFirebase: () => window.signOutOfFirebase(),
       switchPage: (arg) => switchPage(arg),
       openManualEntryDialog: () => openManualEntryDialog()
     };
@@ -860,6 +926,25 @@
       indicator.setAttribute('aria-label', tooltip);
     }
     window.setSyncIndicator = setSyncIndicator;
+
+    // ===== GOOGLE-LOGIN UI (Login/Logout-Button + Statustext) =====
+    function updateAuthUI(user) {
+      const statusText = document.getElementById('authStatusText');
+      const signInBtn = document.getElementById('signInBtn');
+      const signOutBtn = document.getElementById('signOutBtn');
+      if (!statusText || !signInBtn || !signOutBtn) return;
+
+      if (user) {
+        statusText.textContent = 'Angemeldet als ' + (user.displayName || user.email);
+        signInBtn.style.display = 'none';
+        signOutBtn.style.display = '';
+      } else {
+        statusText.textContent = 'Nicht angemeldet - Daten werden nur lokal gespeichert.';
+        signInBtn.style.display = '';
+        signOutBtn.style.display = 'none';
+      }
+    }
+    window.updateAuthUI = updateAuthUI;
 
     // ===== TOASTS (ersetzen alert() für Hinweise) =====
     function showToast(message, type = 'info', duration = 3000) {
@@ -1056,14 +1141,40 @@
       document.getElementById('manualEntrySaveBtn').addEventListener('click', saveManualMealEntry);
     }
 
+    // Holt den Cloud-Stand (falls angemeldet) und übernimmt ihn in allData/
+    // savedRecipes/dailyTargets, wenn er neuer als der lokale Stand ist.
+    // Wird beim Start (nach Login-Prüfung) und bei einem nachträglichen
+    // Google-Login (siehe Firebase-Modul) aufgerufen.
+    async function mergeCloudDataIntoApp() {
+      if (!window.loadDataFromCloud) return;
+      const cloudResult = await window.loadDataFromCloud();
+      if (cloudResult && cloudResult.calorie_data) {
+        const localTs = localStorage.getItem(LOCAL_TS_KEY);
+        const cloudTs = cloudResult.updatedAt;
+        const cloudIsNewer = !localTs || (cloudTs && new Date(cloudTs) > new Date(localTs));
+        if (cloudIsNewer) {
+          allData = cloudResult.calorie_data;
+          if (!allData[TODAY_KEY]) allData[TODAY_KEY] = [];
+          localStorage.setItem('user_calorie_data', JSON.stringify(allData));
+          if (cloudTs) localStorage.setItem(LOCAL_TS_KEY, cloudTs);
+
+          if (cloudResult.saved_recipes) {
+            savedRecipes = cloudResult.saved_recipes;
+            localStorage.setItem(RECIPES_KEY, JSON.stringify(savedRecipes));
+          }
+          if (cloudResult.daily_targets) {
+            dailyTargets = cloudResult.daily_targets;
+            localStorage.setItem(DAILY_TARGETS_KEY, JSON.stringify(dailyTargets));
+          }
+        }
+      }
+    }
+    window.mergeCloudDataIntoApp = mergeCloudDataIntoApp;
+
     window.addEventListener('DOMContentLoaded', async () => {
       if(localStorage.getItem('gemini_api_key')) {
         document.getElementById('geminiKeyInput').value = localStorage.getItem('gemini_api_key');
       }
-      if(localStorage.getItem('firebase_config')) {
-        document.getElementById('firebaseConfigInput').value = localStorage.getItem('firebase_config');
-      }
-
       document.getElementById('calorieLimitInput').value = getCalorieLimit();
 
       document.getElementById('bodyWeightInput').value = getBodyWeight();
@@ -1077,29 +1188,11 @@
       initTheme();
       attachFormListeners();
 
-      if (window.loadDataFromCloud) {
-        const cloudResult = await window.loadDataFromCloud();
-        if (cloudResult && cloudResult.calorie_data) {
-          const localTs = localStorage.getItem(LOCAL_TS_KEY);
-          const cloudTs = cloudResult.updatedAt;
-          const cloudIsNewer = !localTs || (cloudTs && new Date(cloudTs) > new Date(localTs));
-          if (cloudIsNewer) {
-            allData = cloudResult.calorie_data;
-            if (!allData[TODAY_KEY]) allData[TODAY_KEY] = [];
-            localStorage.setItem('user_calorie_data', JSON.stringify(allData));
-            if (cloudTs) localStorage.setItem(LOCAL_TS_KEY, cloudTs);
-
-            if (cloudResult.saved_recipes) {
-              savedRecipes = cloudResult.saved_recipes;
-              localStorage.setItem(RECIPES_KEY, JSON.stringify(savedRecipes));
-            }
-            if (cloudResult.daily_targets) {
-              dailyTargets = cloudResult.daily_targets;
-              localStorage.setItem(DAILY_TARGETS_KEY, JSON.stringify(dailyTargets));
-            }
-          }
-        }
+      if (window.firebaseReady) {
+        await window.firebaseReady;
       }
+
+      await mergeCloudDataIntoApp();
 
       // Für "heute" muss immer ein aktueller Zielwert-Schnappschuss existieren
       // (z.B. bei einem neuen Tag oder beim allerersten Start).
@@ -1109,6 +1202,7 @@
 
       updateDashboard();
       attachPageSwipeNavigation();
+      window.appHasRendered = true;
 
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('sw.js').catch(err => {
@@ -1778,18 +1872,6 @@
       const key = document.getElementById('geminiKeyInput').value.trim();
       localStorage.setItem('gemini_api_key', key);
       showToast('Gemini API Key gespeichert!', 'success');
-    }
-
-    function saveFirebaseConfig() {
-      const configStr = document.getElementById('firebaseConfigInput').value.trim();
-      try {
-        JSON.parse(configStr);
-        localStorage.setItem('firebase_config', configStr);
-        showToast('Firebase Konfiguration gespeichert! Seite wird neu geladen.', 'success');
-        setTimeout(() => location.reload(), 900);
-      } catch (e) {
-        showToast('Ungültiges JSON-Format in der Firebase Konfiguration!', 'error');
-      }
     }
 
     // GEMINI generateContent API-AUFRUF (TEXT UND OPTIONAL BILD)
