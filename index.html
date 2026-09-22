@@ -607,13 +607,6 @@
         </div>
       </div>
 
-      <div class="card">
-        <h2>Gemini API Einstellungen</h2>
-        <label style="font-size: 0.85rem; color: var(--text-muted);" for="geminiKeyInput">API Key aus Google AI Studio:</label>
-        <input type="password" id="geminiKeyInput" placeholder="AIzaSy...">
-        <button type="button" class="btn-primary" data-action="saveGeminiKey">Gemini Key Speichern</button>
-      </div>
-
       <div class="card wide">
         <h2>Cloud-Synchronisierung</h2>
         <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem;">Melde dich mit deinem Google-Konto an, um deine Daten geräteübergreifend zu sichern und zu synchronisieren.</p>
@@ -678,9 +671,11 @@
 
   <!-- FIREBASE MODUL -->
   <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-    import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+    import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
+    import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
+    import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app-check.js";
+    import { getAI, getGenerativeModel, GoogleAIBackend } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-ai.js";
 
     // Die Firebase-Projekt-Config ist kein Geheimnis - sie identifiziert nur
     // das Projekt (siehe Firebase-Doku). Der eigentliche Zugriffsschutz sind
@@ -699,6 +694,43 @@
     const db = getFirestore(app);
     const auth = getAuth(app);
     const googleProvider = new GoogleAuthProvider();
+
+    // App Check: zusätzliche Absicherung, damit nur diese echte App die
+    // Firebase-AI-Logic-Anfragen (siehe unten) stellen kann, nicht irgendeine
+    // fremde Seite, die zufällig dieselbe (nicht geheime) Firebase-Config
+    // verwendet. Site-Key kommt aus Firebase Console → App Check → App
+    // registrieren → reCAPTCHA v3. Ohne gesetzten Key läuft die App normal
+    // weiter (nur ohne diese zusätzliche Absicherung) - siehe README-Hinweis
+    // im PR.
+    const RECAPTCHA_V3_SITE_KEY = "";
+    if (RECAPTCHA_V3_SITE_KEY) {
+      try {
+        initializeAppCheck(app, {
+          provider: new ReCaptchaV3Provider(RECAPTCHA_V3_SITE_KEY),
+          isTokenAutoRefreshEnabled: true
+        });
+      } catch (e) {
+        console.warn("App Check konnte nicht initialisiert werden:", e);
+      }
+    }
+
+    // Firebase AI Logic mit der Gemini Developer API als Backend - das ist
+    // dieselbe Gemini-API wie zuvor über den AI-Studio-Key, aber der
+    // eigentliche Schlüssel bleibt bei Google/Firebase und taucht im Browser
+    // nie mehr im Klartext auf.
+    const ai = getAI(app, { backend: new GoogleAIBackend() });
+
+    // Einzelner Modell-Aufruf für callGeminiInteractions() in der Haupt-App
+    // (siehe dort für die Retry-Logik über mehrere Modelle und die Toasts).
+    window.generateWithFirebaseAI = async function(model, parts) {
+      try {
+        const generativeModel = getGenerativeModel(ai, { model });
+        const result = await generativeModel.generateContent({ contents: [{ role: "user", parts }] });
+        return { ok: true, text: result.response.text() };
+      } catch (e) {
+        return { ok: false, status: e?.customErrorData?.status, message: e?.message || "Unbekannter Fehler" };
+      }
+    };
 
     let currentUser = null;
     let resolveFirebaseReady;
@@ -903,7 +935,6 @@
       addRecipeToMeals: () => addRecipeToMeals(),
       saveCalorieLimit: () => saveCalorieLimit(),
       saveMacroSettings: () => saveMacroSettings(),
-      saveGeminiKey: () => saveGeminiKey(),
       signInWithGoogle: () => window.signInWithGoogle(),
       signOutOfFirebase: () => window.signOutOfFirebase(),
       switchPage: (arg) => switchPage(arg),
@@ -1173,9 +1204,6 @@
     window.mergeCloudDataIntoApp = mergeCloudDataIntoApp;
 
     window.addEventListener('DOMContentLoaded', async () => {
-      if(localStorage.getItem('gemini_api_key')) {
-        document.getElementById('geminiKeyInput').value = localStorage.getItem('gemini_api_key');
-      }
       document.getElementById('calorieLimitInput').value = getCalorieLimit();
 
       document.getElementById('bodyWeightInput').value = getBodyWeight();
@@ -1869,20 +1897,12 @@
       });
     }
 
-    function saveGeminiKey() {
-      const key = document.getElementById('geminiKeyInput').value.trim();
-      localStorage.setItem('gemini_api_key', key);
-      showToast('Gemini API Key gespeichert!', 'success');
-    }
-
-    // GEMINI generateContent API-AUFRUF (TEXT UND OPTIONAL BILD)
+    // GEMINI generateContent AUFRUF (TEXT UND OPTIONAL BILD) - läuft über
+    // Firebase AI Logic (siehe FIREBASE-MODUL weiter oben), nicht mehr über
+    // einen im Browser sichtbaren Gemini-API-Key. window.generateWithFirebaseAI
+    // übernimmt nur den eigentlichen SDK-Aufruf für ein einzelnes Modell; die
+    // Retry-Logik über mehrere Modelle sowie die Fehler-Toasts bleiben hier.
     async function callGeminiInteractions(textPrompt, imageBase64 = null, mimeType = null) {
-      const apiKey = localStorage.getItem("gemini_api_key");
-      if (!apiKey) {
-        showToast("Bitte gib zuerst einen Gemini API Key in den Einstellungen ein!", 'error');
-        return null;
-      }
-
       const MODEL_ATTEMPTS = [
         "gemini-3.8-flash",
         "gemini-3.8-flash",
@@ -1901,53 +1921,22 @@
         });
       }
 
-      let response, data;
-
+      let result;
       for (let attempt = 0; attempt < MODEL_ATTEMPTS.length; attempt++) {
         const model = MODEL_ATTEMPTS[attempt];
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-
-        try {
-          response = await fetch(url, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ contents: [{ parts }] })
-          });
-        } catch (e) {
-          showToast("Netzwerkfehler bei der Kommunikation mit der Gemini API.", 'error');
-          return null;
-        }
+        result = await window.generateWithFirebaseAI(model, parts);
+        if (result.ok) return result.text;
 
         const isLastAttempt = attempt === MODEL_ATTEMPTS.length - 1;
-        if ((response.status === 503 || response.status === 429) && !isLastAttempt) {
+        if ((result.status === 503 || result.status === 429) && !isLastAttempt) {
           await new Promise(resolve => setTimeout(resolve, 800));
           continue;
         }
         break;
       }
 
-      try {
-        if (!response.ok) {
-          const errData = await response.json().catch(() => ({}));
-          showToast(`API Fehler (${response.status}): ${errData.error?.message || 'Ungültige Anfrage'}`, 'error');
-          return null;
-        }
-
-        data = await response.json();
-        const textContent = data.candidates
-          ?.flatMap(c => c.content?.parts || [])
-          ?.filter(p => p.text)
-          ?.map(p => p.text)
-          ?.join("\n");
-
-        if (textContent) return textContent;
-
-        showToast("Keine gültige Textantwort von der API erhalten.", 'error');
-        return null;
-      } catch (e) {
-        showToast("Netzwerkfehler bei der Kommunikation mit der Gemini API.", 'error');
-        return null;
-      }
+      showToast(`KI-Anfrage fehlgeschlagen: ${result?.message || 'Unbekannter Fehler'}`, 'error');
+      return null;
     }
 
     // ===== KI-BEWERTUNG DES TAGES =====
