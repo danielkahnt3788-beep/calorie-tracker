@@ -674,8 +674,7 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
     import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
     import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
-    import { initializeAppCheck, ReCaptchaEnterpriseProvider } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app-check.js";
-    import { getAI, getGenerativeModel, GoogleAIBackend } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-ai.js";
+    import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-functions.js";
 
     // Die Firebase-Projekt-Config ist kein Geheimnis - sie identifiziert nur
     // das Projekt (siehe Firebase-Doku). Der eigentliche Zugriffsschutz sind
@@ -694,43 +693,29 @@
     const db = getFirestore(app);
     const auth = getAuth(app);
     const googleProvider = new GoogleAuthProvider();
+    const functionsInstance = getFunctions(app);
 
-    // App Check: zusätzliche Absicherung, damit nur diese echte App die
-    // Firebase-AI-Logic-Anfragen (siehe unten) stellen kann, nicht irgendeine
-    // fremde Seite, die zufällig dieselbe (nicht geheime) Firebase-Config
-    // verwendet. Ab dem 2.11.2026 erzwingt Firebase App Check ohnehin für
-    // AI Logic, daher hier schon aktiv statt nur optional. Score-basierter
-    // reCAPTCHA-Enterprise-Website-Schlüssel (kein sichtbares Challenge/
-    // Kästchen), registriert für die Domain danielkahnt3788-beep.github.io -
-    // im richtigen Google-Cloud-Projekt (kalorien-tracker-d7191), nicht im
-    // separaten AI-Studio-Projekt (gen-lang-client-...) wie der erste Key.
-    const RECAPTCHA_ENTERPRISE_SITE_KEY = "6LcDjsktAAAAAFVi3XvnUnBIRxA3Kj6s9eB8uW9Q";
-    if (RECAPTCHA_ENTERPRISE_SITE_KEY) {
-      try {
-        initializeAppCheck(app, {
-          provider: new ReCaptchaEnterpriseProvider(RECAPTCHA_ENTERPRISE_SITE_KEY),
-          isTokenAutoRefreshEnabled: true
-        });
-      } catch (e) {
-        console.warn("App Check konnte nicht initialisiert werden:", e);
-      }
-    }
-
-    // Firebase AI Logic mit der Gemini Developer API als Backend - das ist
-    // dieselbe Gemini-API wie zuvor über den AI-Studio-Key, aber der
-    // eigentliche Schlüssel bleibt bei Google/Firebase und taucht im Browser
-    // nie mehr im Klartext auf.
-    const ai = getAI(app, { backend: new GoogleAIBackend() });
+    // Gemini läuft jetzt über eine eigene Cloud Function (functions/index.js)
+    // statt über einen direkt im Browser sichtbaren Key oder Firebase AI
+    // Logic + App Check/reCAPTCHA. Der Gemini-Key liegt ausschließlich
+    // server-seitig als Secret; die Function prüft selbst, dass nur
+    // eingeloggte Nutzer:innen sie aufrufen dürfen (Firebase-Auth-Token wird
+    // von der Callable-Funktion automatisch mitgeschickt und geprüft).
+    const generateWithGemini = httpsCallable(functionsInstance, "generateWithGemini");
 
     // Einzelner Modell-Aufruf für callGeminiInteractions() in der Haupt-App
     // (siehe dort für die Retry-Logik über mehrere Modelle und die Toasts).
+    // Bildet Firebase-Callable-Fehlercodes auf die gleichen "status"-Werte
+    // wie zuvor ab (429/503), damit die Retry-Logik unverändert bleibt.
     window.generateWithFirebaseAI = async function(model, parts) {
       try {
-        const generativeModel = getGenerativeModel(ai, { model });
-        const result = await generativeModel.generateContent({ contents: [{ role: "user", parts }] });
-        return { ok: true, text: result.response.text() };
+        const result = await generateWithGemini({ model, parts });
+        return { ok: true, text: result.data.text };
       } catch (e) {
-        return { ok: false, status: e?.customErrorData?.status, message: e?.message || "Unbekannter Fehler" };
+        let status;
+        if (e.code === "functions/resource-exhausted") status = 429;
+        else if (e.code === "functions/unavailable") status = 503;
+        return { ok: false, status, message: e?.message || "Unbekannter Fehler" };
       }
     };
 
