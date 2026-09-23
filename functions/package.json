@@ -3,7 +3,7 @@
   "description": "Cloud Functions for Kalorien-Tracker - server-seitiger Gemini-Proxy",
   "private": true,
   "engines": {
-    "node": "20"
+    "node": "22"
   },
   "main": "index.js",
   "dependencies": {
