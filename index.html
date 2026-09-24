@@ -1890,12 +1890,15 @@
     // übernimmt nur den eigentlichen SDK-Aufruf für ein einzelnes Modell; die
     // Retry-Logik über mehrere Modelle sowie die Fehler-Toasts bleiben hier.
     async function callGeminiInteractions(textPrompt, imageBase64 = null, mimeType = null) {
+      // Günstigstes Modell zuerst (wird bei normalem Betrieb ohne
+      // Überlastung fast immer verwendet - der Fallback greift nur bei
+      // 429/503), teurere Modelle nur als Eskalation bei Überlastung.
       const MODEL_ATTEMPTS = [
-        "gemini-3.8-flash",
-        "gemini-3.8-flash",
+        "gemini-3.1-flash-lite",
+        "gemini-3.1-flash-lite",
         "gemini-3.5-flash",
         "gemini-3.5-flash",
-        "gemini-3.1-flash-lite"
+        "gemini-3.8-flash"
       ];
 
       const parts = [{ text: textPrompt }];
@@ -1973,6 +1976,41 @@ Gib eine kurze Einschätzung (max. 4-5 Sätze, normaler Fließtext, KEIN JSON, K
       document.getElementById('selectedImagePreview').textContent = `📎 Ausgewählt: ${file.name}`;
     }
 
+    // Verkleinert ein Foto vor dem Senden an Gemini (max. Kantenlänge +
+    // JPEG-Kompression). Handyfotos haben oft mehrere Megapixel, die für
+    // eine Kalorienschätzung keine zusätzliche Genauigkeit bringen, aber
+    // die Bild-Tokens (und damit die Kosten) pro Anfrage deutlich erhöhen.
+    function resizeImageForAnalysis(file, maxDimension = 1024, quality = 0.8) {
+      return new Promise((resolve, reject) => {
+        const objectUrl = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => {
+          URL.revokeObjectURL(objectUrl);
+          let { width, height } = img;
+          if (width > maxDimension || height > maxDimension) {
+            if (width >= height) {
+              height = Math.round(height * (maxDimension / width));
+              width = maxDimension;
+            } else {
+              width = Math.round(width * (maxDimension / height));
+              height = maxDimension;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+          const dataUrl = canvas.toDataURL('image/jpeg', quality);
+          resolve({ base64: dataUrl.split(',')[1], mimeType: 'image/jpeg' });
+        };
+        img.onerror = (e) => {
+          URL.revokeObjectURL(objectUrl);
+          reject(e);
+        };
+        img.src = objectUrl;
+      });
+    }
+
     function resetImageSelection() {
       selectedImageFile = null;
       document.getElementById('selectedImagePreview').textContent = '';
@@ -2043,15 +2081,15 @@ ${jsonFormat}`;
       output.innerHTML = '<span class="spinner"></span>Analysiere Essen mit KI...';
 
       if (selectedImageFile) {
-        const reader = new FileReader();
-        reader.onload = async function() {
-          const base64Data = reader.result.split(',')[1];
-          const mimeType = selectedImageFile.type;
+        try {
+          const { base64, mimeType } = await resizeImageForAnalysis(selectedImageFile);
           const prompt = buildMealAnalysisPrompt(true, description);
-          const responseText = await callGeminiInteractions(prompt, base64Data, mimeType);
+          const responseText = await callGeminiInteractions(prompt, base64, mimeType);
           handleMealAnalysisResponse(responseText, output);
-        };
-        reader.readAsDataURL(selectedImageFile);
+        } catch (e) {
+          showToast('Foto konnte nicht verarbeitet werden.', 'error');
+          output.innerText = '';
+        }
       } else {
         const prompt = buildMealAnalysisPrompt(false, description);
         const responseText = await callGeminiInteractions(prompt);
